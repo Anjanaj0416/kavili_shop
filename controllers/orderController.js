@@ -13,16 +13,57 @@ export function createOrder(req, res) {
   }
 
   const orderData = req.body;
+  console.log("Received order data:", JSON.stringify(orderData, null, 2));
 
   // Validate required fields
   if (!orderData.phone || !orderData.name || !orderData.address ||
     !orderData.deliveryOption || !orderData.whatsappNumber ||
-    !orderData.preferredTime || !orderData.preferredDay ||
-    !orderData.orderedItems || orderData.orderedItems.length === 0) {
+    !orderData.preferredTime || !orderData.preferredDay) {
     return res.status(400).json({
       success: false,
       message: "Missing required order information"
     });
+  }
+
+  // Validate orderedItems specifically
+  if (!orderData.orderedItems || !Array.isArray(orderData.orderedItems) || orderData.orderedItems.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: "orderedItems is required and must be a non-empty array"
+    });
+  }
+
+  // Validate each ordered item
+  for (let i = 0; i < orderData.orderedItems.length; i++) {
+    const item = orderData.orderedItems[i];
+
+    if (!item.name) {
+      return res.status(400).json({
+        success: false,
+        message: `orderedItems[${i}].name is required`
+      });
+    }
+
+    if (!item.price || typeof item.price !== 'number' || item.price <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: `orderedItems[${i}].price is required and must be a positive number`
+      });
+    }
+
+    if (!item.quantity || typeof item.quantity !== 'number' || item.quantity <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: `orderedItems[${i}].quantity is required and must be a positive number`
+      });
+    }
+
+    if (!item.productId) {
+      return res.status(400).json({
+        success: false,
+        message: `orderedItems[${i}].productId is required`
+      });
+    }
   }
 
   // Generate unique order ID
@@ -98,87 +139,87 @@ export function createOrder(req, res) {
 }
 
 export function getOrders(req, res) {
-    // This would need admin authentication
-    Order.find().sort({ date: -1 }).then((orders) => {
-        res.json({
-            success: true,
-            orders: orders
-        });
-    }).catch((error) => {
-        console.error("Error fetching orders:", error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to fetch orders",
-            error: error.message
-        });
+  // This would need admin authentication
+  Order.find().sort({ date: -1 }).then((orders) => {
+    res.json({
+      success: true,
+      orders: orders
     });
+  }).catch((error) => {
+    console.error("Error fetching orders:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch orders",
+      error: error.message
+    });
+  });
 }
 
 // New function to get user's orders (My Orders page)
 export function getMyOrders(req, res) {
-    if (!req.user || !req.user.userId) {
-        return res.status(401).json({
-            success: false,
-            message: "User authentication required"
-        });
-    }
+  if (!req.user || !req.user.userId) {
+    return res.status(401).json({
+      success: false,
+      message: "User authentication required"
+    });
+  }
 
-    // Find orders for this user
-    Order.find({ userId: req.user.userId })
-        .sort({ date: -1 }) // Most recent first
-        .then((orders) => {
-            res.json({
-                success: true,
-                message: "Orders retrieved successfully",
-                orders: orders,
-                count: orders.length
-            });
-        })
-        .catch((error) => {
-            console.error("Error fetching user orders:", error);
-            res.status(500).json({
-                success: false,
-                message: "Failed to fetch orders",
-                error: error.message
-            });
-        });
+  // Find orders for this user
+  Order.find({ userId: req.user.userId })
+    .sort({ date: -1 }) // Most recent first
+    .then((orders) => {
+      res.json({
+        success: true,
+        message: "Orders retrieved successfully",
+        orders: orders,
+        count: orders.length
+      });
+    })
+    .catch((error) => {
+      console.error("Error fetching user orders:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch orders",
+        error: error.message
+      });
+    });
 }
 
 // Function to get a specific order by ID (for order details)
 export function getOrderById(req, res) {
-    if (!req.user || !req.user.userId) {
-        return res.status(401).json({
-            success: false,
-            message: "User authentication required"
-        });
+  if (!req.user || !req.user.userId) {
+    return res.status(401).json({
+      success: false,
+      message: "User authentication required"
+    });
+  }
+
+  const orderId = req.params.orderId;
+
+  Order.findOne({
+    orderId: orderId,
+    userId: req.user.userId // Ensure order belongs to this user
+  }).then((order) => {
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found or access denied"
+      });
     }
 
-    const orderId = req.params.orderId;
-
-    Order.findOne({ 
-        orderId: orderId,
-        userId: req.user.userId // Ensure order belongs to this user
-    }).then((order) => {
-        if (!order) {
-            return res.status(404).json({
-                success: false,
-                message: "Order not found or access denied"
-            });
-        }
-
-        res.json({
-            success: true,
-            message: "Order retrieved successfully",
-            order: order
-        });
-    }).catch((error) => {
-        console.error("Error fetching order:", error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to fetch order",
-            error: error.message
-        });
+    res.json({
+      success: true,
+      message: "Order retrieved successfully",
+      order: order
     });
+  }).catch((error) => {
+    console.error("Error fetching order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch order",
+      error: error.message
+    });
+  });
 }
 
 
