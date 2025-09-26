@@ -23,7 +23,6 @@ connection.once("open",()=>{
   console.log("Database connected");
 })
 
-
 app.use(bodyParser.json())
 
 app.use(
@@ -49,6 +48,15 @@ app.use(
 
 )
 
+// Request logging middleware
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+    if (req.body && Object.keys(req.body).length > 0) {
+        console.log('Request body:', JSON.stringify(req.body, null, 2));
+    }
+    next();
+});
+
 
 app.use("/api/products", productRouter);
 app.use("/api/users", userRouter);
@@ -57,6 +65,17 @@ app.use ("/api/orders", orderRouter)
 app.use((req, res) => {
   console.log(`404 - Route not found: ${req.method} ${req.path}`);
   res.status(404).json({ message: `Route not found: ${req.method} ${req.path}` });
+});
+
+app.use((error, req, res, next) => {
+    console.error('Unhandled error:', error);
+    console.error('Error stack:', error.stack);
+    
+    res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Server error'
+    });
 });
 
 

@@ -1,3 +1,9 @@
+console.log('Required modules check:');
+console.log('User model available:', !!User);
+console.log('bcrypt available:', !!bcrypt);
+console.log('jwt available:', !!jwt);
+console.log('SECRET available:', !!process.env.SECRET);
+
 import User from "../models/user.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -12,147 +18,141 @@ export function loginOrRegister(req, res) {
     const { firstName, lastName, phonenumber, homeaddress } = req.body;
     
     // Validate required fields
-    if (!firstName || !phonenumber || !homeaddress) {
-        console.log("Missing required fields:", { firstName, phonenumber, homeaddress });
+    if (!firstName || !phonenumber) {
         return res.status(400).json({
             success: false,
-            message: "First name, phone number, and home address are required"
+            message: "First name and phone number are required"
         });
     }
-    
-    // First, check if user exists with firstName and phoneNumber combination
-    User.findOne({ 
-        firstName: firstName.trim(),
-        phonenumber: phonenumber.trim() 
-    }).then(async (existingUser) => {
-        console.log("Existing user found:", existingUser ? "Yes" : "No");
-        
-        if (existingUser) {
-            // User exists - login automatically
-            const token = jwt.sign({
-                userId: existingUser.userId,
-                firstName: existingUser.firstName,
-                lastName: existingUser.lastName,
-                type: existingUser.type,
-                phonenumber: existingUser.phonenumber,
-                homeaddress: existingUser.homeaddress
-            }, process.env.SECRET);
-            
-            return res.json({
-                success: true,
-                isNewUser: false,
-                message: "Welcome back! Logged in automatically.",
-                token: token,
-                user: {
-                    userId: existingUser.userId,
-                    firstName: existingUser.firstName,
-                    lastName: existingUser.lastName,
-                    type: existingUser.type,
-                    phonenumber: existingUser.phonenumber,
-                    homeaddress: existingUser.homeaddress
-                }
-            });
-        } else {
-            // User doesn't exist - create new account
-            try {
-                console.log("Creating new user...");
-                
-                // Check if phone number is used by someone else
-                const phoneCheck = await User.findOne({ phonenumber: phonenumber.trim() });
-                if (phoneCheck) {
-                    console.log("Phone number already exists with different name");
-                    return res.status(409).json({
-                        success: false,
-                        message: "This phone number is already registered with a different name. Please use the correct name for login."
-                    });
-                }
-                
-                // Generate unique user ID
-                const latestUser = await User.find().sort({ userId: -1 }).limit(1);
-                let userId;
-                if (latestUser.length == 0) {
-                    userId = "USR0001";
-                } else {
-                    const currentUserId = latestUser[0].userId;
-                    const numberString = currentUserId.replace("USR", "");
-                    const number = parseInt(numberString);
-                    const newNumber = (number + 1).toString().padStart(4, "0");
-                    userId = "USR" + newNumber;
-                }
-                
-                console.log("Generated userId:", userId);
-                
-                // Create new user - NO EMAIL FIELD
-                const newUser = new User({
-                    userId: userId,
-                    firstName: firstName.trim(),
-                    lastName: lastName ? lastName.trim() : "",
-                    phonenumber: phonenumber.trim(),
-                    homeaddress: homeaddress.trim(),
-                    type: "customer",
-                    password: bcrypt.hashSync(phonenumber.trim(), 10)
-                });
-                
-                console.log("Saving new user:", newUser);
-                await newUser.save();
-                console.log("User saved successfully");
-                
-                // Generate token for new user
-                const token = jwt.sign({
-                    userId: newUser.userId,
-                    firstName: newUser.firstName,
-                    lastName: newUser.lastName,
-                    type: newUser.type,
-                    phonenumber: newUser.phonenumber,
-                    homeaddress: newUser.homeaddress
-                }, process.env.SECRET);
-                
-                res.status(201).json({
-                    success: true,
-                    isNewUser: true,
-                    message: "Account created successfully! You are now logged in.",
-                    token: token,
-                    user: {
-                        userId: newUser.userId,
-                        firstName: newUser.firstName,
-                        lastName: newUser.lastName,
-                        type: newUser.type,
-                        phonenumber: newUser.phonenumber,
-                        homeaddress: newUser.homeaddress
-                    }
-                });
-            } catch (error) {
-                console.error("Error creating user:", error);
-                
-                // Handle specific MongoDB errors
-                if (error.code === 11000) {
-                    if (error.keyPattern && error.keyPattern.phonenumber) {
-                        return res.status(409).json({
-                            success: false,
-                            message: "Phone number already exists"
-                        });
-                    }
-                    return res.status(409).json({
-                        success: false,
-                        message: "User already exists"
-                    });
-                }
-                
-                res.status(500).json({
-                    success: false,
-                    message: "Failed to create account",
-                    error: error.message
-                });
-            }
-        }
-    }).catch((error) => {
-        console.error("Error in loginOrRegister:", error);
-        res.status(500).json({
+
+    // Phone number validation
+    const phoneRegex = /^\d{10}$/;
+    if (!phoneRegex.test(phonenumber.trim())) {
+        return res.status(400).json({
             success: false,
-            message: "Authentication failed",
-            error: error.message
+            message: "Phone number must be 10 digits"
         });
-    });
+    }
+
+    // First, check if user exists by firstName
+    User.findOne({ firstName: firstName.trim() })
+        .then((user) => {
+            if (user) {
+                // User exists - verify phone number
+                const isPhoneCorrect = bcrypt.compareSync(phonenumber.trim(), user.password);
+                
+                if (isPhoneCorrect) {
+                    // Phone number matches - log them in
+                    const token = jwt.sign({
+                        userId: user.userId,
+                        firstName: user.firstName,
+                        lastName: user.lastName,
+                        type: user.type,
+                        phonenumber: user.phonenumber,
+                        homeaddress: user.homeaddress
+                    }, process.env.SECRET, { expiresIn: '24h' }); // Add expiration
+                    
+                    return res.status(200).json({
+                        success: true,
+                        message: "Login successful",
+                        isNewUser: false,
+                        token: token,
+                        user: {
+                            userId: user.userId,
+                            firstName: user.firstName,
+                            lastName: user.lastName,
+                            type: user.type,
+                            phonenumber: user.phonenumber,
+                            homeaddress: user.homeaddress
+                        }
+                    });
+                } else {
+                    return res.status(401).json({
+                        success: false,
+                        message: "Phone number doesn't match existing account"
+                    });
+                }
+            } else {
+                // User doesn't exist - create new account
+                try {
+                    const hashedPhoneNumber = bcrypt.hashSync(phonenumber.trim(), 10);
+                    
+                    const newUser = new User({
+                        userId: Math.random().toString(36).substr(2, 9), // Better ID generation
+                        firstName: firstName.trim(),
+                        lastName: lastName ? lastName.trim() : "",
+                        password: hashedPhoneNumber, // Phone as password
+                        type: "customer",
+                        phonenumber: phonenumber.trim(),
+                        homeaddress: homeaddress ? homeaddress.trim() : ""
+                    });
+
+                    return newUser.save().then((savedUser) => {
+                        const token = jwt.sign({
+                            userId: savedUser.userId,
+                            firstName: savedUser.firstName,
+                            lastName: savedUser.lastName,
+                            type: savedUser.type,
+                            phonenumber: savedUser.phonenumber,
+                            homeaddress: savedUser.homeaddress
+                        }, process.env.SECRET, { expiresIn: '24h' });
+                        
+                        res.status(201).json({
+                            success: true,
+                            message: "Account created successfully",
+                            isNewUser: true,
+                            token: token,
+                            user: {
+                                userId: savedUser.userId,
+                                firstName: savedUser.firstName,
+                                lastName: savedUser.lastName,
+                                type: savedUser.type,
+                                phonenumber: savedUser.phonenumber,
+                                homeaddress: savedUser.homeaddress
+                            }
+                        });
+                    }).catch((error) => {
+                        console.error("Error creating user:", error);
+                        
+                        // Handle duplicate key errors
+                        if (error.code === 11000) {
+                            if (error.keyPattern && error.keyPattern.phonenumber) {
+                                return res.status(409).json({
+                                    success: false,
+                                    message: "Phone number already exists"
+                                });
+                            }
+                            return res.status(409).json({
+                                success: false,
+                                message: "User already exists"
+                            });
+                        }
+                        
+                        return res.status(500).json({
+                            success: false,
+                            message: "Failed to create account",
+                            error: error.message
+                        });
+                    });
+                    
+                } catch (error) {
+                    console.error("Error in user creation:", error);
+                    return res.status(500).json({
+                        success: false,
+                        message: "Failed to create account",
+                        error: error.message
+                    });
+                }
+            }
+        })
+        .catch((error) => {
+            console.error("Database error in loginOrRegister:", error);
+            res.status(500).json({
+                success: false,
+                message: "Authentication failed",
+                error: error.message
+            });
+        });
 }
 
 // Check if account exists (for real-time feedback)
