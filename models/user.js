@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 const userSchema = mongoose.Schema({
@@ -23,11 +22,11 @@ const userSchema = mongoose.Schema({
     phonenumber: {
         type: String,
         required: true,
-        unique: true   
+        unique: true   // Phone number is the unique identifier
     },
     password: {
         type: String,
-        required: true
+        required: true // This will store hashed phone number for customers
     },
     homeaddress: {
         type: String,
