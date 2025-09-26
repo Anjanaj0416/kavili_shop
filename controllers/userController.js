@@ -1,17 +1,20 @@
-console.log('Required modules check:');
-console.log('User model available:', !!User);
-console.log('bcrypt available:', !!bcrypt);
-console.log('jwt available:', !!jwt);
-console.log('SECRET available:', !!process.env.SECRET);
 
 import User from "../models/user.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+ 
+dotenv.config();  
 
-dotenv.config();
+function debugModules() {
+    console.log('Required modules check:');
+    console.log('User model available:', !!User);
+    console.log('bcrypt available:', !!bcrypt);
+    console.log('jwt available:', !!jwt);
+    console.log('SECRET available:', !!process.env.SECRET);
+} 
 
-// Function for automatic login/registration during checkout
+
 export function loginOrRegister(req, res) {
     console.log("loginOrRegister called with:", req.body);
     

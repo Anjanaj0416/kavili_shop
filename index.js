@@ -9,6 +9,11 @@ import userRouter from './routes/userRouter.js';
 import orderRouter from './routes/orderRouter.js';
 dotenv.config()
 
+console.log('Environment variables check:');
+console.log('SECRET:', process.env.SECRET ? 'Available' : 'Missing');
+console.log('MONGO_DB_URI:', process.env.MONGO_DB_URI ? 'Available' : 'Missing');
+console.log('All env vars:', Object.keys(process.env).filter(key => !key.startsWith('npm_')));
+
 const app = express();
 
 const mongoUrl = process.env.MONGO_DB_URI
