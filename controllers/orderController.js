@@ -1,4 +1,4 @@
-import Order from "../models/order.js";
+/*import Order from "../models/order.js";
 import Product from "../models/product.js";
 
 export async function createOrder(req, res) {
@@ -263,30 +263,527 @@ export async function deleteOrder(req, res) {
 // New function to get product order statistics for admin dashboard
 export async function getProductOrderStats(req, res) {
     try {
-        const products = await Product.find({}, {
-            productName: 1,
-            images: 1,
-            totalOrdered: 1,
-            _id: 1
-        }).sort({ totalOrdered: -1 });
-        
-        const productStats = products.map(product => ({
-            productId: product._id,
-            productName: product.productName,
-            productImage: product.images && product.images.length > 0 ? product.images[0] : null,
-            totalQuantityOrdered: product.totalOrdered || 0
+        // Aggregate orders to calculate actual product statistics
+        const productStats = await Order.aggregate([
+            {
+                $unwind: "$orderedItems"
+            },
+            {
+                $group: {
+                    _id: "$orderedItems.productId",
+                    totalQuantityOrdered: { $sum: "$orderedItems.quantity" },
+                    productName: { $first: "$orderedItems.name" },
+                    productImage: { $first: "$orderedItems.image" }
+                }
+            },
+            {
+                $sort: { totalQuantityOrdered: -1 }
+            }
+        ]);
+
+        // If no orders exist, get all products with 0 orders
+        if (productStats.length === 0) {
+            const products = await Product.find({}, {
+                productName: 1,
+                images: 1,
+                productId: 1,
+                _id: 1
+            }).sort({ productName: 1 });
+            
+            const emptyStats = products.map(product => ({
+                productId: product.productId,
+                productName: product.productName,
+                productImage: product.images && product.images.length > 0 ? product.images[0] : null,
+                totalQuantityOrdered: 0
+            }));
+            
+            return res.json({
+                message: "No orders found. Showing all products with 0 orders.",
+                products: emptyStats
+            });
+        }
+
+        // Format the aggregated data
+        const formattedStats = productStats.map(stat => ({
+            productId: stat._id,
+            productName: stat.productName,
+            productImage: stat.productImage,
+            totalQuantityOrdered: stat.totalQuantityOrdered
         }));
-        
+
         res.json({
             message: "Product order statistics retrieved successfully",
-            products: productStats
+            products: formattedStats
         });
     } catch (error) {
+        console.error("Error fetching product order statistics:", error);
+        res.status(500).json({
+            message: "Error fetching product order statistics",
+            error: error.message
+        });
+    }
+}*/
+
+import Order from "../models/order.js";
+import Product from "../models/product.js";
+import User from "../models/user.js";
+
+export async function createOrder(req, res) {
+  try {
+    const latestOrder = await Order.find().sort({ orderId: -1 }).limit(1);
+    console.log(latestOrder);
+    let orderId;
+    if (latestOrder.length == 0) {
+      orderId = "CBC0001";
+    } else {
+      const currentOrderId = latestOrder[0].orderId;
+      const numberString = currentOrderId.replace("CBC", "");
+      const number = parseInt(numberString);
+      const newNumber = (number + 1).toString().padStart(4, "0");
+      orderId = "CBC" + newNumber;
+    }
+    
+    const newOrderData = req.body;
+    
+    // Check if user is authenticated and get userId
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User must be logged in to create an order"
+      });
+    }
+    
+    // Add userId to order data
+    newOrderData.userId = req.user.userId;
+    
+    const newProductArray = [];
+    
+    // Validate delivery option
+    if (!newOrderData.deliveryOption || !["pickup", "delivery"].includes(newOrderData.deliveryOption)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid delivery option. Must be 'pickup' or 'delivery'"
+      });
+    }
+    
+    // Validate required fields based on delivery option
+    const requiredFields = ["name", "phone", "whatsappNumber", "preferredTime", "preferredDay"];
+    
+    if (newOrderData.deliveryOption === "delivery") {
+      requiredFields.push("address", "nearestTownOrCity");
+    }
+    
+    for (const field of requiredFields) {
+      if (!newOrderData[field] || !newOrderData[field].toString().trim()) {
+        return res.status(400).json({
+          success: false,
+          message: `${field} is required for ${newOrderData.deliveryOption} orders`
+        });
+      }
+    }
+    
+    // Validate all products first before processing
+    for (let i = 0; i < newOrderData.orderedItems.length; i++) {
+      const product = await Product.findOne({
+        productId: newOrderData.orderedItems[i].productId,
+      });
+      if (product == null) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Product with id " +
+            newOrderData.orderedItems[i].productId +
+            " not found",
+        });
+      }
+      newProductArray[i] = {
+        name: product.productName,
+        price: product.lastPrice,
+        quantity: newOrderData.orderedItems[i].qty,
+        image: product.images[0],
+        productId: newOrderData.orderedItems[i].productId, // Keep productId for tracking
+      };
+    }
+    
+    console.log(newProductArray);
+    newOrderData.orderedItems = newProductArray;
+    newOrderData.orderId = orderId;
+    newOrderData.status = "preparing"; // Set default status
+    
+    // Ensure address is set for pickup orders
+    if (newOrderData.deliveryOption === "pickup" && !newOrderData.address) {
+      newOrderData.address = "Pickup";
+    }
+    
+    const order = new Order(newOrderData);
+    const savedOrder = await order.save();
+    
+    // Update totalOrdered for each product when order is placed
+    for (let item of newOrderData.orderedItems) {
+      await Product.updateOne(
+        { productId: item.productId },
+        { $inc: { totalOrdered: item.quantity } }
+      );
+    }
+    
+    res.status(201).json({
+      success: true,
+      message: "Order created successfully",
+      order: savedOrder
+    });
+  } catch (error) {
+    console.error("Error creating order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create order",
+      error: error.message,
+    });
+  }
+}
+
+export async function getOrders(req, res) {
+  try {
+    // Fixed: Use proper field matching for population
+    const orders = await Order.find({});
+    
+    // Manually populate user data to avoid schema mismatch
+    const ordersWithUserData = await Promise.all(
+      orders.map(async (order) => {
+        const user = await User.findOne({ userId: order.userId });
+        return {
+          ...order.toObject(),
+          user: user ? {
+            firstName: user.firstName,
+            lastName: user.lastName,
+            phonenumber: user.phonenumber,
+            email: user.email || ''
+          } : null
+        };
+      })
+    );
+    
+    res.json(ordersWithUserData);
+  } catch (error) {
+    console.error("Error fetching orders:", error);
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+}
+
+// New function to get user's orders (My Orders page)
+export async function getMyOrders(req, res) {
+  try {
+    // Check if user is authenticated
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User must be logged in to view orders"
+      });
+    }
+    
+    // Find orders for the logged-in user
+    const orders = await Order.find({ userId: req.user.userId })
+      .sort({ date: -1 }); // Sort by date, newest first
+    
+    // Manually populate user data
+    const ordersWithUserData = await Promise.all(
+      orders.map(async (order) => {
+        const user = await User.findOne({ userId: order.userId });
+        return {
+          ...order.toObject(),
+          user: user ? {
+            firstName: user.firstName,
+            lastName: user.lastName,
+            phonenumber: user.phonenumber,
+            email: user.email || ''
+          } : null
+        };
+      })
+    );
+    
+    if (orders.length === 0) {
+      return res.json({
+        success: true,
+        message: "No orders found",
+        orders: []
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: "Orders retrieved successfully",
+      orders: ordersWithUserData,
+      totalOrders: orders.length
+    });
+  } catch (error) {
+    console.error("Error fetching user orders:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch orders",
+      error: error.message
+    });
+  }
+}
+
+// Function to get a specific order by ID (for order details)
+export async function getOrderById(req, res) {
+  try {
+    const { orderId } = req.params;
+    
+    // Check if user is authenticated
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User must be logged in to view order details"
+      });
+    }
+    
+    // Find the order and ensure it belongs to the logged-in user
+    const order = await Order.findOne({ 
+      _id: orderId, 
+      userId: req.user.userId 
+    });
+    
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found or you don't have permission to view it"
+      });
+    }
+    
+    // Manually populate user data
+    const user = await User.findOne({ userId: order.userId });
+    const orderWithUserData = {
+      ...order.toObject(),
+      user: user ? {
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phonenumber: user.phonenumber,
+        email: user.email || ''
+      } : null
+    };
+    
+    res.json({
+      success: true,
+      message: "Order details retrieved successfully",
+      order: orderWithUserData
+    });
+  } catch (error) {
+    console.error("Error fetching order details:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch order details",
+      error: error.message
+    });
+  }
+}
+
+export async function getQuote(req, res) {
+  try {
+    const newOrderData = req.body;
+    const newProductArray = [];
+    let total = 0;
+    let labelTotal = 0;
+    
+    for (let i = 0; i < newOrderData.orderedItems.length; i++) {
+      const product = await Product.findOne({
+        productId: newOrderData.orderedItems[i].productId,
+      });
+      if (product == null) {
+        res.json({
+          message:
+            "Product with id " +
+            newOrderData.orderedItems[i].productId +
+            " not found",
+        });
+        return;
+      }
+      total += product.lastPrice * newOrderData.orderedItems[i].qty;
+      labelTotal += product.price * newOrderData.orderedItems[i].qty;
+      newProductArray[i] = {
+        name: product.productName,
+        price: product.lastPrice,
+        labelPrice: product.price, // Fixed typo from 'ladelPrice'
+        discount: product.price - product.lastPrice,
+        quantity: newOrderData.orderedItems[i].qty,
+        image: product.images[0],
+      };
+    }
+    
+    console.log(newProductArray);
+    res.json({
+      orderedItems: newProductArray, // Fixed typo from 'orederedItems'
+      total: total,
+      labelTotal: labelTotal,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+}
+
+export async function updateOrderStatus(req, res) {
+    try {
+        const { orderId } = req.params;
+        const { status } = req.body;
+        
+        // Validate status
+        const validStatuses = ["preparing", "shipped", "delivered", "cancelled"];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({
+                message: "Invalid status. Must be one of: " + validStatuses.join(", ")
+            });
+        }
+        
+        // Get the current order to check previous status
+        const currentOrder = await Order.findById(orderId);
+        if (!currentOrder) {
+            return res.status(404).json({
+                message: "Order not found"
+            });
+        }
+        
+        const previousStatus = currentOrder.status;
+        
+        // Update the order status
+        const updatedOrder = await Order.findByIdAndUpdate(
+            orderId,
+            { status: status },
+            { new: true }
+        );
+        
+        // Handle totalOrdered updates based on status changes
+        if (status === "delivered" && previousStatus !== "delivered") {
+            // When order is marked as delivered, decrease totalOrdered
+            for (let item of currentOrder.orderedItems) {
+                if (item.productId) {
+                    await Product.updateOne(
+                        { productId: item.productId },
+                        { $inc: { totalOrdered: -item.quantity } }
+                    );
+                }
+            }
+        } else if (previousStatus === "delivered" && status !== "delivered") {
+            // If order was previously delivered but now changed to another status, increase totalOrdered
+            for (let item of currentOrder.orderedItems) {
+                if (item.productId) {
+                    await Product.updateOne(
+                        { productId: item.productId },
+                        { $inc: { totalOrdered: item.quantity } }
+                    );
+                }
+            }
+        }
+        
+        res.json({
+            message: "Order status updated successfully",
+            order: updatedOrder
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: error.message
+        });
+    }
+}
+
+export async function deleteOrder(req, res) {
+    try {
+        const { orderId } = req.params;
+        
+        // Get the order before deleting to update product totals
+        const orderToDelete = await Order.findById(orderId);
+        if (!orderToDelete) {
+            return res.status(404).json({
+                message: "Order not found"
+            });
+        }
+        
+        // If order was not delivered, decrease totalOrdered for each product
+        if (orderToDelete.status !== "delivered") {
+            for (let item of orderToDelete.orderedItems) {
+                if (item.productId) {
+                    await Product.updateOne(
+                        { productId: item.productId },
+                        { $inc: { totalOrdered: -item.quantity } }
+                    );
+                }
+            }
+        }
+        
+        const deletedOrder = await Order.findByIdAndDelete(orderId);
+        
+        res.json({
+            message: "Order deleted successfully"
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: error.message
+        });
+    }
+}
+
+// New function to get product order statistics for admin dashboard
+export async function getProductOrderStats(req, res) {
+    try {
+        // Aggregate orders to calculate actual product statistics
+        const productStats = await Order.aggregate([
+            {
+                $unwind: "$orderedItems"
+            },
+            {
+                $group: {
+                    _id: "$orderedItems.productId",
+                    totalQuantityOrdered: { $sum: "$orderedItems.quantity" },
+                    productName: { $first: "$orderedItems.name" },
+                    productImage: { $first: "$orderedItems.image" }
+                }
+            },
+            {
+                $sort: { totalQuantityOrdered: -1 }
+            }
+        ]);
+
+        // If no orders exist, get all products with 0 orders
+        if (productStats.length === 0) {
+            const products = await Product.find({}, {
+                productName: 1,
+                images: 1,
+                productId: 1,
+                _id: 1
+            }).sort({ productName: 1 });
+            
+            const emptyStats = products.map(product => ({
+                productId: product.productId,
+                productName: product.productName,
+                productImage: product.images && product.images.length > 0 ? product.images[0] : null,
+                totalQuantityOrdered: 0
+            }));
+            
+            return res.json({
+                message: "No orders found. Showing all products with 0 orders.",
+                products: emptyStats
+            });
+        }
+
+        // Format the aggregated data
+        const formattedStats = productStats.map(stat => ({
+            productId: stat._id,
+            productName: stat.productName,
+            productImage: stat.productImage,
+            totalQuantityOrdered: stat.totalQuantityOrdered
+        }));
+
+        res.json({
+            message: "Product order statistics retrieved successfully",
+            products: formattedStats
+        });
+    } catch (error) {
+        console.error("Error fetching product order statistics:", error);
         res.status(500).json({
             message: "Error fetching product order statistics",
             error: error.message
         });
     }
 }
-
-

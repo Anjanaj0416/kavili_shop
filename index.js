@@ -49,9 +49,15 @@ app.use(
 
 )
 
+
 app.use("/api/products", productRouter);
-app.use("/api/user", userRouter);
+app.use("/api/users", userRouter);
 app.use ("/api/orders", orderRouter)
+
+app.use((req, res) => {
+  console.log(`404 - Route not found: ${req.method} ${req.path}`);
+  res.status(404).json({ message: `Route not found: ${req.method} ${req.path}` });
+});
 
 
 app.listen(
