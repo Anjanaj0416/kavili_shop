@@ -1,3 +1,4 @@
+// middleware/auth.js - FIXED VERSION
 import jwt from 'jsonwebtoken';
 import User from '../models/user.js';
 
@@ -19,8 +20,8 @@ export async function authenticateToken(req, res, next) {
 
         console.log("Token received:", token.substring(0, 20) + "..."); // Debug log (partial token)
 
-        // Verify token
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        // *** FIXED: Use process.env.SECRET instead of process.env.JWT_SECRET ***
+        const decoded = jwt.verify(token, process.env.SECRET);
         console.log("Token decoded successfully:", { userId: decoded.userId, firstName: decoded.firstName }); // Debug log
         
         // Optional: Verify user still exists in database
@@ -70,4 +71,3 @@ export async function authenticateToken(req, res, next) {
         }
     }
 }
-
