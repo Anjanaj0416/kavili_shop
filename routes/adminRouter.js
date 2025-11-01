@@ -1,25 +1,25 @@
-// routes/adminRouter.js
-import express from "express";
+// routes/adminRouter.js - COMPLETE VERSION WITH CUSTOMER MANAGEMENT
+import express from 'express';
 import { 
-    createAdminAccount, 
-    adminLogin, 
-    getAllAdmins,
-    updateAdminPassword,
-    deleteAdminAccount
-} from "../controllers/adminUserController.js";
-import { adminAuth } from "../middleware/adminAuth.js";
-
+    loginAdmin, 
+    getAllAdmins, 
+    getAllCustomers,
+    updateAdminPassword, 
+    createAdminUser, 
+    deleteAdminUser 
+} from '../controllers/adminUserController.js';
+import { adminAuth } from '../middleware/adminAuth.js';
 
 const adminRouter = express.Router();
 
-// Admin login (public - but only for admin credentials)
-adminRouter.post("/login", adminLogin);
+// PUBLIC ROUTES
+adminRouter.post("/login", loginAdmin);
 
-// Protected admin routes (require admin authentication)
-adminRouter.post("/create", adminAuth, createAdminAccount);
-adminRouter.get("/list", adminAuth, getAllAdmins);
+// PROTECTED ADMIN ROUTES (require admin authentication)
+adminRouter.get("/admins", adminAuth, getAllAdmins);
+adminRouter.get("/customers", adminAuth, getAllCustomers);
 adminRouter.put("/password", adminAuth, updateAdminPassword);
-adminRouter.delete("/:adminId", adminAuth, deleteAdminAccount);
-
+adminRouter.post("/create", adminAuth, createAdminUser);
+adminRouter.delete("/:userId", adminAuth, deleteAdminUser);
 
 export default adminRouter;
