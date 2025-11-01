@@ -66,39 +66,49 @@ export function createOrder(req, res) {
     }
   }
 
-  // Generate unique order ID
-  Order.find().sort({ orderId: -1 }).limit(1).then(async (latestOrder) => {
-    let orderId;
-    if (latestOrder.length == 0) {
-      orderId = "ORD0001";
-    } else {
-      const currentOrderId = latestOrder[0].orderId;
-      const numberString = currentOrderId.replace("ORD", "");
-      const number = parseInt(numberString);
-      const newNumber = (number + 1).toString().padStart(4, "0");
-      orderId = "ORD" + newNumber;
-    }
+  // Generate unique order ID with timestamp to avoid duplicates
+  const generateUniqueOrderId = async () => {
+    const timestamp = Date.now().toString().slice(-6); // Last 6 digits of timestamp
+    const randomNum = Math.floor(Math.random() * 100).toString().padStart(2, "0");
+    return `ORD${timestamp}${randomNum}`;
+  };
 
-    // Create order with user ID
-    const newOrder = new Order({
-      orderId: orderId,
-      userId: req.user.userId, // Link order to authenticated user
-      phone: orderData.phone,
-      name: orderData.name,
-      address: orderData.address,
-      deliveryOption: orderData.deliveryOption,
-      whatsappNumber: orderData.whatsappNumber,
-      preferredTime: orderData.preferredTime,
-      preferredDay: orderData.preferredDay,
-      nearestTownOrCity: orderData.nearestTownOrCity,
-      notes: orderData.notes || "",
-      orderedItems: orderData.orderedItems,
-      status: "preparing"
-    });
-
+  // Create and save the order
+  const createAndSaveOrder = async () => {
     try {
-      // Save the order
-      await newOrder.save();
+      // Generate unique order ID
+      const orderId = await generateUniqueOrderId();
+
+      // Create order with user ID
+      const newOrder = new Order({
+        orderId: orderId,
+        userId: req.user.userId,
+        phone: orderData.phone,
+        name: orderData.name,
+        address: orderData.address,
+        deliveryOption: orderData.deliveryOption,
+        whatsappNumber: orderData.whatsappNumber,
+        preferredTime: orderData.preferredTime,
+        preferredDay: orderData.preferredDay,
+        nearestTownOrCity: orderData.nearestTownOrCity,
+        notes: orderData.notes || "",
+        orderedItems: orderData.orderedItems,
+        status: "preparing"
+      });
+
+      // Try to save the order
+      try {
+        await newOrder.save();
+      } catch (saveError) {
+        // If duplicate orderId, try one more time with a new ID
+        if (saveError.code === 11000 && saveError.keyPattern && saveError.keyPattern.orderId) {
+          console.log("Duplicate orderId detected, generating new ID...");
+          newOrder.orderId = await generateUniqueOrderId();
+          await newOrder.save();
+        } else {
+          throw saveError;
+        }
+      }
 
       // Update product quantities and total ordered
       for (const item of orderData.orderedItems) {
@@ -116,23 +126,36 @@ export function createOrder(req, res) {
       res.status(201).json({
         success: true,
         message: "Order created successfully",
-        orderId: orderId,
+        orderId: newOrder.orderId,
         order: newOrder
       });
 
     } catch (error) {
       console.error("Error creating order:", error);
+
+      // Handle specific error types
+      if (error.code === 11000) {
+        return res.status(500).json({
+          success: false,
+          message: "Duplicate order error. Please try again.",
+          error: error.message
+        });
+      }
+
       res.status(500).json({
         success: false,
         message: "Failed to create order",
         error: error.message
       });
     }
-  }).catch((error) => {
-    console.error("Error generating order ID:", error);
+  };
+
+  // Execute the order creation
+  createAndSaveOrder().catch((error) => {
+    console.error("Error in order creation process:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to generate order ID",
+      message: "Failed to process order",
       error: error.message
     });
   });
