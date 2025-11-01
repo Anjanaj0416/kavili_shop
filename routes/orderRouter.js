@@ -1,52 +1,4 @@
-/*import express from 'express';
-import { 
-    createOrder, 
-    deleteOrder, 
-    getOrders, 
-    getQuote, 
-    updateOrderStatus, 
-    getProductOrderStats 
-} from '../controllers/orderController.js';
-
-const orderRouter = express.Router();
-
-orderRouter.post("/", createOrder);
-orderRouter.get("/", getOrders);
-orderRouter.post("/quote", getQuote);
-orderRouter.put("/:orderId/status", updateOrderStatus);
-orderRouter.delete("/:orderId", deleteOrder);
-orderRouter.get("/product-stats", getProductOrderStats);
-
-export default orderRouter;*/
-
-/*import express from 'express';
-import { 
-    createOrder, 
-    deleteOrder, 
-    getOrders, 
-    getQuote, 
-    updateOrderStatus, 
-    getProductOrderStats 
-} from '../controllers/orderController.js';
-
-
-const orderRouter = express.Router();
-
-// Public routes
-orderRouter.post("/quote", getQuote);
-
-// Protected routes (require authentication)
-orderRouter.post("/", createOrder);
-
-// Admin only routes
-orderRouter.get("/",  getOrders);
-orderRouter.put("/:orderId/status",  updateOrderStatus);
-orderRouter.delete("/:orderId",  deleteOrder);
-orderRouter.get("/product-stats",  getProductOrderStats);
-
-export default orderRouter;*/
-
-
+// routes/orderRouter.js - COMPLETE FIXED VERSION WITH ADMIN AUTH
 import express from 'express';
 import { 
     createOrder, 
@@ -59,22 +11,25 @@ import {
     getOrderById
 } from '../controllers/orderController.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { adminAuth } from '../middleware/adminAuth.js';
 
 const orderRouter = express.Router();
 
-// Public routes (no authentication required)
+// PUBLIC ROUTES (no authentication required)
 orderRouter.post("/quote", getQuote);
 
-// Protected routes (require authentication)
-// Order matters - more specific routes first!
+// CUSTOMER ROUTES (require user authentication)
+// Order matters - more specific routes first to avoid conflicts!
 orderRouter.get("/my-orders", authenticateToken, getMyOrders);
-orderRouter.get("/product-stats", authenticateToken, getProductOrderStats);
 orderRouter.post("/", authenticateToken, createOrder);
-orderRouter.get("/", authenticateToken, getOrders);
 
-// Routes with parameters should come after specific routes
+// ADMIN ONLY ROUTES (require admin authentication)
+orderRouter.get("/product-stats", adminAuth, getProductOrderStats);
+orderRouter.get("/", adminAuth, getOrders); // View all orders (admin only)
+orderRouter.put("/:orderId/status", adminAuth, updateOrderStatus);
+orderRouter.delete("/:orderId", adminAuth, deleteOrder);
+
+// CUSTOMER ROUTE (with parameter - should be after specific routes)
 orderRouter.get("/:orderId", authenticateToken, getOrderById);
-orderRouter.put("/:orderId/status", authenticateToken, updateOrderStatus);
-orderRouter.delete("/:orderId", authenticateToken, deleteOrder);
 
 export default orderRouter;
