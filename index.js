@@ -8,6 +8,7 @@ import productRouter from './routes/productRouter.js';
 import userRouter from './routes/userRouter.js';
 import orderRouter from './routes/orderRouter.js';
 import adminRouter from './routes/adminRouter.js';
+import contactRouter from './routes/contactRouter.js';
 dotenv.config()
 
 console.log('Environment variables check:');
@@ -68,6 +69,7 @@ app.use("/api/products", productRouter);
 app.use("/api/users", userRouter);
 app.use ("/api/orders", orderRouter)
 app.use("/api/admin", adminRouter);
+app.use("/api/contact", contactRouter);
 
 app.use((req, res) => {
   console.log(`404 - Route not found: ${req.method} ${req.path}`);
