@@ -9,6 +9,7 @@ import userRouter from './routes/userRouter.js';
 import orderRouter from './routes/orderRouter.js';
 import adminRouter from './routes/adminRouter.js';
 import contactRouter from './routes/contactRouter.js';
+import aboutRouter from './routes/aboutRouter.js';
 dotenv.config()
 
 console.log('Environment variables check:');
@@ -30,7 +31,9 @@ connection.once("open",()=>{
   console.log("Database connected");
 })
 
-app.use(bodyParser.json())
+// Increase payload limit for Base64 images
+app.use(bodyParser.json({ limit: '50mb' }))
+app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }))
 
 app.use(
 
@@ -70,6 +73,7 @@ app.use("/api/users", userRouter);
 app.use ("/api/orders", orderRouter)
 app.use("/api/admin", adminRouter);
 app.use("/api/contact", contactRouter);
+app.use("/api/about", aboutRouter);
 
 app.use((req, res) => {
   console.log(`404 - Route not found: ${req.method} ${req.path}`);
@@ -94,4 +98,3 @@ app.listen(
     console.log(`Server is running on port 3000`);
   }
 )
-
