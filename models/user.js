@@ -31,6 +31,11 @@ const userSchema = mongoose.Schema({
     homeaddress: {
         type: String,
         required: true
+    },
+    email: {
+        type: String,
+        required: false,
+        default: null
     }   
 });
 

@@ -1,6 +1,7 @@
 import Order from "../models/order.js";
 import Product from "../models/product.js";
 import User from "../models/user.js";
+import { sendOrderStatusEmail } from "../utils/emailService.js";
 
 // Helper function to generate unique order ID
 async function generateUniqueOrderId() {
@@ -108,7 +109,7 @@ export function createOrder(req, res) {
         nearestTownOrCity: orderData.nearestTownOrCity,
         notes: orderData.notes || "",
         orderedItems: orderData.orderedItems,
-        status: "pending"  // Changed from "preparing" to "pending"
+        status: "pending"
       });
 
       // Try to save the order
@@ -138,6 +139,14 @@ export function createOrder(req, res) {
         );
       }
 
+      // Send email notification if user has email
+      if (user.email) {
+        console.log(`Sending order confirmation email to: ${user.email}`);
+        sendOrderStatusEmail(user.email, newOrder, "pending").catch(err => {
+          console.error('Failed to send email notification:', err);
+        });
+      }
+
       res.status(201).json({
         success: true,
         message: "Order created successfully",
@@ -165,140 +174,135 @@ export function createOrder(req, res) {
     }
   };
 
-  // Execute the order creation
-  createAndSaveOrder().catch((error) => {
-    console.error("Error in order creation process:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to process order",
-      error: error.message
-    });
-  });
+  // Call the async function
+  createAndSaveOrder();
 }
 
 export function getOrders(req, res) {
-  // This would need admin authentication
-  Order.find().sort({ date: -1 }).then((orders) => {
+  Order.find()
+    .sort({ date: -1 })
+    .then((orders) => {
+      res.json({
+        message: "Orders fetched successfully",
+        orders: orders,
+      });
+    })
+    .catch((error) => {
+      res.status(500).json({
+        message: error.message,
+      });
+    });
+}
+
+export async function getMyOrders(req, res) {
+  try {
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User authentication required"
+      });
+    }
+
+    const orders = await Order.find({ userId: req.user.userId })
+      .sort({ date: -1 });
+
     res.json({
       success: true,
       orders: orders
     });
-  }).catch((error) => {
-    console.error("Error fetching orders:", error);
+  } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Failed to fetch orders",
-      error: error.message
-    });
-  });
-}
-
-// New function to get user's orders (My Orders page)
-export function getMyOrders(req, res) {
-  if (!req.user || !req.user.userId) {
-    return res.status(401).json({
-      success: false,
-      message: "User authentication required"
+      message: error.message
     });
   }
+}
 
-  // Find orders for this user
-  Order.find({ userId: req.user.userId })
-    .sort({ date: -1 }) // Most recent first
-    .then((orders) => {
-      res.json({
-        success: true,
-        message: "Orders retrieved successfully",
-        orders: orders,
-        count: orders.length
-      });
-    })
-    .catch((error) => {
-      console.error("Error fetching user orders:", error);
-      res.status(500).json({
+export async function getOrderById(req, res) {
+  try {
+    const { orderId } = req.params;
+
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({
         success: false,
-        message: "Failed to fetch orders",
-        error: error.message
+        message: "User authentication required"
       });
+    }
+
+    const order = await Order.findOne({
+      _id: orderId,
+      userId: req.user.userId
     });
-}
 
-// Function to get a specific order by ID (for order details)
-export function getOrderById(req, res) {
-  if (!req.user || !req.user.userId) {
-    return res.status(401).json({
-      success: false,
-      message: "User authentication required"
-    });
-  }
-
-  const orderId = req.params.orderId;
-
-  Order.findOne({
-    orderId: orderId,
-    userId: req.user.userId // Ensure order belongs to this user
-  }).then((order) => {
     if (!order) {
       return res.status(404).json({
         success: false,
-        message: "Order not found or access denied"
+        message: "Order not found"
       });
     }
 
     res.json({
       success: true,
-      message: "Order retrieved successfully",
       order: order
     });
-  }).catch((error) => {
-    console.error("Error fetching order:", error);
+  } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Failed to fetch order",
-      error: error.message
+      message: error.message
     });
-  });
+  }
 }
 
-
-export async function getQuote(req, res) {
+export function getQuote(req, res) {
   try {
     const newOrderData = req.body;
-    const newProductArray = [];
-    let total = 0;
-    let labelTotal = 0;
+    console.log("Quote request:", newOrderData);
 
-    for (let i = 0; i < newOrderData.orderedItems.length; i++) {
-      const product = await Product.findOne({
-        productId: newOrderData.orderedItems[i].productId,
+    if (!newOrderData.orderedItems || newOrderData.orderedItems.length === 0) {
+      return res.status(400).json({
+        message: "No items in order"
       });
-      if (product == null) {
-        res.json({
-          message:
-            "Product with id " +
-            newOrderData.orderedItems[i].productId +
-            " not found",
-        });
-        return;
-      }
-      total += product.lastPrice * newOrderData.orderedItems[i].qty;
-      labelTotal += product.price * newOrderData.orderedItems[i].qty;
-      newProductArray[i] = {
-        name: product.productName,
-        price: product.lastPrice,
-        labelPrice: product.price,
-        discount: product.price - product.lastPrice,
-        quantity: newOrderData.orderedItems[i].qty,
-        image: product.images[0],
-      };
     }
 
-    console.log(newProductArray);
-    res.json({
-      orderedItems: newProductArray,
-      total: total,
-      labelTotal: labelTotal,
-    });
+    const calculateQuote = async () => {
+      let total = 0;
+      let labelTotal = 0;
+      const newProductArray = [];
+
+      for (let i = 0; i < newOrderData.orderedItems.length; i++) {
+        const product = await Product.findOne({
+          productId: newOrderData.orderedItems[i].productId,
+        });
+        if (product == null) {
+          res.json({
+            message:
+              "Product with id " +
+              newOrderData.orderedItems[i].productId +
+              " not found",
+          });
+          return;
+        }
+        total += product.lastPrice * newOrderData.orderedItems[i].qty;
+        labelTotal += product.price * newOrderData.orderedItems[i].qty;
+        newProductArray[i] = {
+          name: product.productName,
+          price: product.lastPrice,
+          labelPrice: product.price,
+          discount: product.price - product.lastPrice,
+          quantity: newOrderData.orderedItems[i].qty,
+          image: product.images[0],
+        };
+      }
+
+      console.log(newProductArray);
+      res.json({
+        orderedItems: newProductArray,
+        total: total,
+        labelTotal: labelTotal,
+      });
+    };
+
+    calculateQuote();
   } catch (error) {
     res.status(500).json({
       message: error.message,
@@ -311,7 +315,7 @@ export async function updateOrderStatus(req, res) {
     const { orderId } = req.params;
     const { status } = req.body;
 
-    // Validate status - updated to include pending and accepted
+    // Validate status
     const validStatuses = ["pending", "accepted", "preparing", "shipped", "delivered", "cancelled"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
@@ -359,6 +363,15 @@ export async function updateOrderStatus(req, res) {
       }
     }
 
+    // Send email notification if user has email
+    const user = await User.findOne({ userId: currentOrder.userId });
+    if (user && user.email) {
+      console.log(`Sending status update email to: ${user.email}`);
+      sendOrderStatusEmail(user.email, updatedOrder, status).catch(err => {
+        console.error('Failed to send email notification:', err);
+      });
+    }
+
     res.json({
       message: "Order status updated successfully",
       order: updatedOrder
@@ -398,6 +411,15 @@ export async function acceptOrder(req, res) {
       { status: "accepted" },
       { new: true }
     );
+
+    // Send email notification if user has email
+    const user = await User.findOne({ userId: currentOrder.userId });
+    if (user && user.email) {
+      console.log(`Sending order acceptance email to: ${user.email}`);
+      sendOrderStatusEmail(user.email, updatedOrder, "accepted").catch(err => {
+        console.error('Failed to send email notification:', err);
+      });
+    }
 
     res.json({
       success: true,
@@ -488,27 +510,17 @@ export async function getProductOrderStats(req, res) {
 
       return res.json({
         message: "No orders found. Showing all products with 0 orders.",
-        products: emptyStats
+        productStats: emptyStats
       });
     }
 
-    // Format the aggregated data
-    const formattedStats = productStats.map(stat => ({
-      productId: stat._id,
-      productName: stat.productName,
-      productImage: stat.productImage,
-      totalQuantityOrdered: stat.totalQuantityOrdered
-    }));
-
     res.json({
-      message: "Product order statistics retrieved successfully",
-      products: formattedStats
+      message: "Product order statistics fetched successfully",
+      productStats: productStats
     });
   } catch (error) {
-    console.error("Error fetching product order statistics:", error);
     res.status(500).json({
-      message: "Error fetching product order statistics",
-      error: error.message
+      message: error.message
     });
   }
 }
