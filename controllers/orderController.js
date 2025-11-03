@@ -183,12 +183,14 @@ export function getOrders(req, res) {
     .sort({ date: -1 })
     .then((orders) => {
       res.json({
+        success: true,
         message: "Orders fetched successfully",
         orders: orders,
       });
     })
     .catch((error) => {
       res.status(500).json({
+        success: false,
         message: error.message,
       });
     });
@@ -373,11 +375,13 @@ export async function updateOrderStatus(req, res) {
     }
 
     res.json({
+      success: true,
       message: "Order status updated successfully",
       order: updatedOrder
     });
   } catch (error) {
     res.status(500).json({
+      success: false,
       message: error.message
     });
   }
@@ -461,11 +465,13 @@ export async function deleteOrder(req, res) {
     const deletedOrder = await Order.findByIdAndDelete(orderId);
 
     res.json({
+      success: true,
       message: "Order deleted successfully",
       deletedOrder: deletedOrder
     });
   } catch (error) {
     res.status(500).json({
+      success: false,
       message: error.message
     });
   }
@@ -509,17 +515,20 @@ export async function getProductOrderStats(req, res) {
       }));
 
       return res.json({
+        success: true,
         message: "No orders found. Showing all products with 0 orders.",
-        productStats: emptyStats
+        products: emptyStats
       });
     }
 
     res.json({
+      success: true,
       message: "Product order statistics fetched successfully",
-      productStats: productStats
+      products: productStats
     });
   } catch (error) {
     res.status(500).json({
+      success: false,
       message: error.message
     });
   }
