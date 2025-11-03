@@ -1,8 +1,8 @@
-// routes/userRouter.js - FIXED VERSION (removes duplicate authenticateToken)
+// routes/userRouter.js - UPDATED VERSION WITH PROFILE UPDATE
 import express from "express";
-import { checkAccountExists, createUser, loginOrRegister, loginUser } from "../controllers/userController.js";
+import { checkAccountExists, createUser, loginOrRegister, loginUser, updateCustomerProfile } from "../controllers/userController.js";
 import { getMyOrders, getOrderById } from "../controllers/orderController.js";
-import { authenticateToken } from "../middleware/auth.js"; // Import from middleware
+import { authenticateToken } from "../middleware/auth.js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -14,6 +14,9 @@ userRouter.post("/", createUser);
 userRouter.post("/login", loginUser);
 userRouter.post("/login-or-register", loginOrRegister);
 userRouter.post("/check-account", checkAccountExists);
+
+// Profile management routes (protected - require authentication)
+userRouter.put("/profile", authenticateToken, updateCustomerProfile);
 
 // My Orders routes (protected - require authentication)
 userRouter.get("/my-orders", authenticateToken, getMyOrders);

@@ -474,3 +474,108 @@ export function isCustomer(req) {
     }
     return true;
 }
+
+export function updateCustomerProfile(req, res) {
+    console.log("updateCustomerProfile called");
+    console.log("User from token:", req.user);
+    console.log("Update data:", req.body);
+
+    // Check if user is authenticated
+    if (!req.user) {
+        return res.status(401).json({
+            success: false,
+            message: "Authentication required"
+        });
+    }
+
+    // Only customers can update their own profile
+    if (req.user.type !== 'customer') {
+        return res.status(403).json({
+            success: false,
+            message: "Only customers can update their profile"
+        });
+    }
+
+    const { firstName, lastName, homeaddress, email } = req.body;
+
+    // Validate required fields
+    if (!firstName || !firstName.trim()) {
+        return res.status(400).json({
+            success: false,
+            message: "First name is required"
+        });
+    }
+
+    if (!homeaddress || !homeaddress.trim()) {
+        return res.status(400).json({
+            success: false,
+            message: "Home address is required"
+        });
+    }
+
+    // Email validation (if provided)
+    if (email && email.trim()) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid email format"
+            });
+        }
+    }
+
+    // Find and update user
+    User.findOne({ userId: req.user.userId })
+        .then(async (user) => {
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    message: "User not found"
+                });
+            }
+
+            // Update user fields
+            user.firstName = firstName.trim();
+            user.lastName = lastName ? lastName.trim() : "";
+            user.homeaddress = homeaddress.trim();
+            user.email = email && email.trim() ? email.trim() : null;
+
+            await user.save();
+
+            // Generate new token with updated information
+            const token = jwt.sign({
+                userId: user.userId,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                type: user.type,
+                phonenumber: user.phonenumber,
+                homeaddress: user.homeaddress,
+                email: user.email
+            }, process.env.SECRET);
+
+            console.log("Profile updated successfully for user:", user.userId);
+
+            res.json({
+                success: true,
+                message: "Profile updated successfully",
+                token: token,
+                user: {
+                    userId: user.userId,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    type: user.type,
+                    phonenumber: user.phonenumber,
+                    homeaddress: user.homeaddress,
+                    email: user.email
+                }
+            });
+        })
+        .catch((error) => {
+            console.error("Error updating profile:", error);
+            res.status(500).json({
+                success: false,
+                message: "Failed to update profile",
+                error: error.message
+            });
+        });
+}
