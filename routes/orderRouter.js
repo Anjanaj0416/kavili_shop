@@ -1,11 +1,12 @@
-// routes/orderRouter.js - COMPLETE FIXED VERSION WITH ADMIN AUTH
+// routes/orderRouter.js - COMPLETE FIXED VERSION WITH ADMIN AUTH AND ACCEPT ORDER
 import express from 'express';
 import { 
     createOrder, 
     deleteOrder, 
     getOrders, 
     getQuote, 
-    updateOrderStatus, 
+    updateOrderStatus,
+    acceptOrder,
     getProductOrderStats,
     getMyOrders,
     getOrderById
@@ -27,6 +28,7 @@ orderRouter.post("/", authenticateToken, createOrder);
 orderRouter.get("/product-stats", adminAuth, getProductOrderStats);
 orderRouter.get("/", adminAuth, getOrders); // View all orders (admin only)
 orderRouter.put("/:orderId/status", adminAuth, updateOrderStatus);
+orderRouter.put("/:orderId/accept", adminAuth, acceptOrder); // NEW: Accept order endpoint
 orderRouter.delete("/:orderId", adminAuth, deleteOrder);
 
 // CUSTOMER ROUTE (with parameter - should be after specific routes)

@@ -2,6 +2,13 @@ import Order from "../models/order.js";
 import Product from "../models/product.js";
 import User from "../models/user.js";
 
+// Helper function to generate unique order ID
+async function generateUniqueOrderId() {
+  const timestamp = Date.now();
+  const random = Math.floor(Math.random() * 1000);
+  return `ORD-${timestamp}-${random}`;
+}
+
 // Updated createOrder function that works with authenticated users
 export function createOrder(req, res) {
   // Check if user is authenticated (middleware should set req.user)
@@ -44,17 +51,17 @@ export function createOrder(req, res) {
       });
     }
 
-    if (!item.price || typeof item.price !== 'number' || item.price <= 0) {
+    if (!item.price || typeof item.price !== 'number') {
       return res.status(400).json({
         success: false,
-        message: `orderedItems[${i}].price is required and must be a positive number`
+        message: `orderedItems[${i}].price is required and must be a number`
       });
     }
 
-    if (!item.quantity || typeof item.quantity !== 'number' || item.quantity <= 0) {
+    if (!item.quantity || typeof item.quantity !== 'number') {
       return res.status(400).json({
         success: false,
-        message: `orderedItems[${i}].quantity is required and must be a positive number`
+        message: `orderedItems[${i}].quantity is required and must be a number`
       });
     }
 
@@ -66,34 +73,42 @@ export function createOrder(req, res) {
     }
   }
 
-  // Generate unique order ID with timestamp to avoid duplicates
-  const generateUniqueOrderId = async () => {
-    const timestamp = Date.now().toString().slice(-6); // Last 6 digits of timestamp
-    const randomNum = Math.floor(Math.random() * 100).toString().padStart(2, "0");
-    return `ORD${timestamp}${randomNum}`;
-  };
-
-  // Create and save the order
+  // Async function to create and save the order
   const createAndSaveOrder = async () => {
     try {
       // Generate unique order ID
       const orderId = await generateUniqueOrderId();
+      console.log("Generated orderId:", orderId);
 
-      // Create order with user ID
+      // Get user information
+      const user = await User.findOne({ userId: req.user.userId });
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found"
+        });
+      }
+
+      const { phone, deliveryOption, whatsappNumber, preferredTime, preferredDay, nearestTownOrCity } = orderData;
+
+      // Create new order with pending status
       const newOrder = new Order({
         orderId: orderId,
-        userId: req.user.userId,
-        phone: orderData.phone,
+        userId: user.userId,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phonenumber: user.phonenumber,
+        phone: phone,
         name: orderData.name,
         address: orderData.address,
-        deliveryOption: orderData.deliveryOption,
-        whatsappNumber: orderData.whatsappNumber,
-        preferredTime: orderData.preferredTime,
+        deliveryOption: deliveryOption,
+        whatsappNumber: whatsappNumber,
+        preferredTime: preferredTime,
         preferredDay: orderData.preferredDay,
         nearestTownOrCity: orderData.nearestTownOrCity,
         notes: orderData.notes || "",
         orderedItems: orderData.orderedItems,
-        status: "preparing"
+        status: "pending"  // Changed from "preparing" to "pending"
       });
 
       // Try to save the order
@@ -271,7 +286,7 @@ export async function getQuote(req, res) {
       newProductArray[i] = {
         name: product.productName,
         price: product.lastPrice,
-        labelPrice: product.price, // Fixed typo from 'ladelPrice'
+        labelPrice: product.price,
         discount: product.price - product.lastPrice,
         quantity: newOrderData.orderedItems[i].qty,
         image: product.images[0],
@@ -280,7 +295,7 @@ export async function getQuote(req, res) {
 
     console.log(newProductArray);
     res.json({
-      orderedItems: newProductArray, // Fixed typo from 'orederedItems'
+      orderedItems: newProductArray,
       total: total,
       labelTotal: labelTotal,
     });
@@ -296,8 +311,8 @@ export async function updateOrderStatus(req, res) {
     const { orderId } = req.params;
     const { status } = req.body;
 
-    // Validate status
-    const validStatuses = ["preparing", "shipped", "delivered", "cancelled"];
+    // Validate status - updated to include pending and accepted
+    const validStatuses = ["pending", "accepted", "preparing", "shipped", "delivered", "cancelled"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         message: "Invalid status. Must be one of: " + validStatuses.join(", ")
@@ -355,6 +370,48 @@ export async function updateOrderStatus(req, res) {
   }
 }
 
+// New function to accept order (shortcut for admin)
+export async function acceptOrder(req, res) {
+  try {
+    const { orderId } = req.params;
+
+    // Get the current order
+    const currentOrder = await Order.findById(orderId);
+    if (!currentOrder) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found"
+      });
+    }
+
+    // Check if order is in pending status
+    if (currentOrder.status !== "pending") {
+      return res.status(400).json({
+        success: false,
+        message: `Order is already ${currentOrder.status}. Can only accept pending orders.`
+      });
+    }
+
+    // Update the order status to accepted
+    const updatedOrder = await Order.findByIdAndUpdate(
+      orderId,
+      { status: "accepted" },
+      { new: true }
+    );
+
+    res.json({
+      success: true,
+      message: "Order accepted successfully",
+      order: updatedOrder
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+}
+
 export async function deleteOrder(req, res) {
   try {
     const { orderId } = req.params;
@@ -382,7 +439,8 @@ export async function deleteOrder(req, res) {
     const deletedOrder = await Order.findByIdAndDelete(orderId);
 
     res.json({
-      message: "Order deleted successfully"
+      message: "Order deleted successfully",
+      deletedOrder: deletedOrder
     });
   } catch (error) {
     res.status(500).json({
