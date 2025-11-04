@@ -10,6 +10,7 @@ import orderRouter from './routes/orderRouter.js';
 import adminRouter from './routes/adminRouter.js';
 import contactRouter from './routes/contactRouter.js';
 import aboutRouter from './routes/aboutRouter.js';
+
 dotenv.config()
 
 console.log('Environment variables check:');
@@ -21,7 +22,26 @@ const app = express();
 
 const mongoUrl = process.env.MONGO_DB_URI
 
-app.use(cors())
+// ⭐ UPDATED CORS CONFIGURATION - This is the fix!
+const corsOptions = {
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:3000',
+    'http://127.0.0.1:5173',
+    'https://kavili-shop-b9472.firebaseapp.com'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Length', 'X-Request-Id'],
+  maxAge: 86400 // 24 hours
+};
+
+app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
 
 mongoose.connect(mongoUrl,{})
 
@@ -36,26 +56,19 @@ app.use(bodyParser.json({ limit: '50mb' }))
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }))
 
 app.use(
-
   (req,res,next)=>{
-
     const token = req.header("Authorization")?.replace("Bearer ","")
     console.log(token)
 
     if(token != null){
       jwt.verify(token, process.env.SECRET , (error,decoded)=>{
-
         if(!error){
           req.user = decoded        
         }
-
       })
     }
-
     next()
-
   }
-
 )
 
 // Request logging middleware
@@ -66,7 +79,6 @@ app.use((req, res, next) => {
     }
     next();
 });
-
 
 app.use("/api/products", productRouter);
 app.use("/api/users", userRouter);
@@ -90,7 +102,6 @@ app.use((error, req, res, next) => {
         error: process.env.NODE_ENV === 'development' ? error.message : 'Server error'
     });
 });
-
 
 app.listen(
   3000,
