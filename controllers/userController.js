@@ -579,3 +579,174 @@ export function updateCustomerProfile(req, res) {
             });
         });
 }
+
+// Add this function to your controllers/userController.js file
+
+// Google registration function - creates user after Google auth
+export function googleRegister(req, res) {
+    console.log("googleRegister called with:", req.body);
+    
+    const { firstName, lastName, phonenumber, homeaddress, email, googleId, authProvider } = req.body;
+    
+    // Validate required fields
+    if (!firstName || !phonenumber || !homeaddress || !email || !googleId) {
+        return res.status(400).json({
+            success: false,
+            message: "First name, phone number, home address, email, and Google ID are required"
+        });
+    }
+
+    // Phone number validation
+    const phoneRegex = /^\d{10}$/;
+    if (!phoneRegex.test(phonenumber.trim())) {
+        return res.status(400).json({
+            success: false,
+            message: "Phone number must be 10 digits"
+        });
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid email address"
+        });
+    }
+
+    // Check if user already exists with this Google ID or email
+    User.findOne({ 
+        $or: [
+            { email: email.trim() },
+            { googleId: googleId }
+        ]
+    }).then((existingUser) => {
+        if (existingUser) {
+            // User already exists - log them in instead
+            console.log("User already exists with Google account");
+            
+            // Check if phone number matches (for security)
+            const isPhoneCorrect = bcrypt.compareSync(phonenumber.trim(), existingUser.password);
+            
+            if (isPhoneCorrect || existingUser.googleId === googleId) {
+                // Generate JWT token
+                const token = jwt.sign({
+                    userId: existingUser.userId,
+                    firstName: existingUser.firstName,
+                    lastName: existingUser.lastName,
+                    type: existingUser.type,
+                    phonenumber: existingUser.phonenumber,
+                    homeaddress: existingUser.homeaddress,
+                    email: existingUser.email
+                }, process.env.SECRET);
+                
+                return res.status(200).json({
+                    success: true,
+                    message: "User already exists. Logged in successfully.",
+                    token: token,
+                    isExistingUser: true,
+                    user: {
+                        userId: existingUser.userId,
+                        firstName: existingUser.firstName,
+                        lastName: existingUser.lastName,
+                        type: existingUser.type,
+                        phonenumber: existingUser.phonenumber,
+                        homeaddress: existingUser.homeaddress,
+                        email: existingUser.email
+                    }
+                });
+            } else {
+                return res.status(409).json({
+                    success: false,
+                    message: "An account with this email already exists with different credentials"
+                });
+            }
+        } else {
+            // Create new user with Google authentication
+            console.log("Creating new user with Google authentication");
+            
+            // Hash the phone number to use as password
+            const hashedPassword = bcrypt.hashSync(phonenumber.trim(), 10);
+            
+            // Generate a unique userId
+            User.countDocuments({}).then((count) => {
+                const newUserId = count + 1;
+                
+                const newUser = new User({
+                    userId: newUserId,
+                    firstName: firstName.trim(),
+                    lastName: lastName?.trim() || "",
+                    email: email.trim(),
+                    phonenumber: phonenumber.trim(),
+                    password: hashedPassword,
+                    homeaddress: homeaddress.trim(),
+                    type: "customer",
+                    googleId: googleId,
+                    authProvider: authProvider || 'google'
+                });
+                
+                newUser.save()
+                    .then((savedUser) => {
+                        console.log("User created successfully:", savedUser.firstName);
+                        
+                        // Generate JWT token
+                        const token = jwt.sign({
+                            userId: savedUser.userId,
+                            firstName: savedUser.firstName,
+                            lastName: savedUser.lastName,
+                            type: savedUser.type,
+                            phonenumber: savedUser.phonenumber,
+                            homeaddress: savedUser.homeaddress,
+                            email: savedUser.email
+                        }, process.env.SECRET);
+                        
+                        res.status(201).json({
+                            success: true,
+                            message: "User registered successfully with Google",
+                            token: token,
+                            isNewUser: true,
+                            user: {
+                                userId: savedUser.userId,
+                                firstName: savedUser.firstName,
+                                lastName: savedUser.lastName,
+                                type: savedUser.type,
+                                phonenumber: savedUser.phonenumber,
+                                homeaddress: savedUser.homeaddress,
+                                email: savedUser.email
+                            }
+                        });
+                    })
+                    .catch((error) => {
+                        console.error("Error saving user:", error);
+                        
+                        if (error.code === 11000) {
+                            return res.status(409).json({
+                                success: false,
+                                message: "User with this phone number or email already exists"
+                            });
+                        }
+                        
+                        res.status(500).json({
+                            success: false,
+                            message: "Registration failed",
+                            error: error.message
+                        });
+                    });
+            }).catch((error) => {
+                console.error("Error counting users:", error);
+                res.status(500).json({
+                    success: false,
+                    message: "Registration failed",
+                    error: error.message
+                });
+            });
+        }
+    }).catch((error) => {
+        console.error("Error checking existing user:", error);
+        res.status(500).json({
+            success: false,
+            message: "Database error",
+            error: error.message
+        });
+    });
+}
