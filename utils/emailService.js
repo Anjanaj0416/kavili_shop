@@ -23,6 +23,9 @@ export async function sendOrderStatusEmail(userEmail, orderData, newStatus) {
     }
 
     try {
+        // Get frontend URL from environment or use default
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        
         // Status-specific email content
         const statusContent = {
             pending: {
@@ -30,8 +33,8 @@ export async function sendOrderStatusEmail(userEmail, orderData, newStatus) {
                 message: 'Your order has been received and is awaiting confirmation from our team.'
             },
             accepted: {
-                subject: `Order ${orderData.orderId} - Confirmed!`,
-                message: 'Great news! Your order has been confirmed and accepted.'
+                subject: `Order ${orderData.orderId} - Confirmed! Complete Your Payment`,
+                message: 'Great news! Your order has been confirmed and accepted. Please complete your payment to proceed with delivery.'
             },
             preparing: {
                 subject: `Order ${orderData.orderId} - Being Prepared`,
@@ -56,6 +59,24 @@ export async function sendOrderStatusEmail(userEmail, orderData, newStatus) {
             message: `Your order status has been updated to: ${newStatus}`
         };
 
+        // Generate payment link for accepted orders
+        const paymentLink = `${frontendUrl}/payment/${orderData.orderId}`;
+        
+        // Create payment button HTML for accepted orders
+        const paymentButtonHtml = newStatus === 'accepted' ? `
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${paymentLink}" 
+                   style="display: inline-block; background-color: #10b981; color: white; 
+                          padding: 15px 40px; text-decoration: none; border-radius: 8px; 
+                          font-weight: bold; font-size: 16px;">
+                    💳 Complete Payment Now
+                </a>
+                <p style="margin-top: 15px; font-size: 14px; color: #666;">
+                    Click the button above to view your invoice and make payment
+                </p>
+            </div>
+        ` : '';
+
         // Email HTML template
         const htmlContent = `
             <!DOCTYPE html>
@@ -69,6 +90,7 @@ export async function sendOrderStatusEmail(userEmail, orderData, newStatus) {
                     .status-badge { display: inline-block; background-color: #10b981; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin: 10px 0; }
                     .order-details { background-color: white; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #f97316; }
                     .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+                    .payment-notice { background-color: #fff3cd; border: 2px solid #ffc107; padding: 15px; border-radius: 5px; margin: 20px 0; }
                 </style>
             </head>
             <body>
@@ -82,6 +104,17 @@ export async function sendOrderStatusEmail(userEmail, orderData, newStatus) {
                         <p>${content.message}</p>
                         
                         <div class="status-badge">Status: ${newStatus.toUpperCase()}</div>
+                        
+                        ${newStatus === 'accepted' ? `
+                            <div class="payment-notice">
+                                <h3 style="margin-top: 0; color: #856404;">⚠️ Payment Required</h3>
+                                <p style="margin: 10px 0; color: #856404;">
+                                    Your order has been accepted! To proceed with ${orderData.deliveryOption === 'delivery' ? 'delivery' : 'pickup'}, 
+                                    please complete your payment using the button below.
+                                </p>
+                            </div>
+                            ${paymentButtonHtml}
+                        ` : ''}
                         
                         <div class="order-details">
                             <h3>Order Details</h3>

@@ -533,3 +533,38 @@ export async function getProductOrderStats(req, res) {
     });
   }
 }
+
+export async function getOrderForPayment(req, res) {
+  try {
+    const { orderId } = req.params;
+
+    // Find order by orderId (not MongoDB _id)
+    const order = await Order.findOne({ orderId: orderId });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found"
+      });
+    }
+
+    // Only allow access to accepted/preparing/shipped orders (not pending or cancelled)
+    if (order.status !== 'accepted' && order.status !== 'preparing' && order.status !== 'shipped') {
+      return res.status(400).json({
+        success: false,
+        message: "This order is not available for payment"
+      });
+    }
+
+    res.json({
+      success: true,
+      order: order
+    });
+  } catch (error) {
+    console.error('Error fetching order for payment:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+}
