@@ -2,8 +2,8 @@ import User from "../models/user.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
- 
-dotenv.config();  
+
+dotenv.config();
 
 function debugModules() {
     console.log('Required modules check:');
@@ -11,14 +11,14 @@ function debugModules() {
     console.log('bcrypt available:', !!bcrypt);
     console.log('jwt available:', !!jwt);
     console.log('SECRET available:', !!process.env.SECRET);
-} 
+}
 
 // NEW: Google Login for existing users with email
 export function googleLogin(req, res) {
     console.log("googleLogin called with:", req.body);
-    
+
     const { email, googleId, displayName } = req.body;
-    
+
     // Validate required fields
     if (!email || !googleId) {
         return res.status(400).json({
@@ -36,7 +36,7 @@ export function googleLogin(req, res) {
                     message: "No account found with this email. Please register first or use traditional login."
                 });
             }
-            
+
             // Check if user has an email (required for Google login)
             if (!user.email || user.email.trim() === '') {
                 return res.status(400).json({
@@ -62,8 +62,10 @@ export function googleLogin(req, res) {
                 phonenumber: user.phonenumber,
                 homeaddress: user.homeaddress,
                 email: user.email
-            }, process.env.SECRET);
-            
+            }, process.env.SECRET, {
+                expiresIn: '24h'  // ADD THIS LINE
+            });
+
             res.status(200).json({
                 success: true,
                 message: "Google login successful",
@@ -91,9 +93,9 @@ export function googleLogin(req, res) {
 
 export function loginOrRegister(req, res) {
     console.log("loginOrRegister called with:", req.body);
-    
+
     const { firstName, lastName, phonenumber, homeaddress, email } = req.body;
-    
+
     // Validate required fields
     if (!firstName || !phonenumber) {
         return res.status(400).json({
@@ -128,7 +130,7 @@ export function loginOrRegister(req, res) {
             if (user) {
                 // User exists - verify phone number and log them in
                 const isPhoneCorrect = bcrypt.compareSync(phonenumber.trim(), user.password);
-                
+
                 if (isPhoneCorrect) {
                     // Generate JWT token
                     const token = jwt.sign({
@@ -139,8 +141,10 @@ export function loginOrRegister(req, res) {
                         phonenumber: user.phonenumber,
                         homeaddress: user.homeaddress,
                         email: user.email
-                    }, process.env.SECRET);
-                    
+                    }, process.env.SECRET, {
+                        expiresIn: '24h'  // ADD THIS LINE
+                    });
+
                     res.status(200).json({
                         success: true,
                         message: "Login successful",
@@ -165,15 +169,15 @@ export function loginOrRegister(req, res) {
             } else {
                 // User doesn't exist - create new user
                 console.log("Creating new user via loginOrRegister");
-                
+
                 // Hash the phone number to use as password
                 const hashedPassword = bcrypt.hashSync(phonenumber.trim(), 10);
-                
+
                 // Generate a unique userId in the format USRxxxx
                 User.countDocuments({ type: "customer" }).then((count) => {
                     const userNumber = (count + 1).toString().padStart(4, '0');
                     const newUserId = `USR${userNumber}`;
-                    
+
                     const newUser = new User({
                         userId: newUserId,
                         firstName: firstName.trim(),
@@ -184,11 +188,11 @@ export function loginOrRegister(req, res) {
                         homeaddress: homeaddress?.trim() || "",
                         type: "customer"
                     });
-                    
+
                     newUser.save()
                         .then((savedUser) => {
                             console.log("User created successfully:", savedUser.firstName);
-                            
+
                             // Generate JWT token
                             const token = jwt.sign({
                                 userId: savedUser.userId,
@@ -198,8 +202,10 @@ export function loginOrRegister(req, res) {
                                 phonenumber: savedUser.phonenumber,
                                 homeaddress: savedUser.homeaddress,
                                 email: savedUser.email
-                            }, process.env.SECRET);
-                            
+                            }, process.env.SECRET, {
+                                expiresIn: '24h'  // ADD THIS LINE
+                            });
+
                             res.status(201).json({
                                 success: true,
                                 message: "User registered successfully",
@@ -247,9 +253,9 @@ export function loginOrRegister(req, res) {
 export function createUser(req, res) {
     debugModules();
     console.log("createUser called with:", req.body);
-    
+
     const { firstName, lastName, phonenumber, homeaddress, email } = req.body;
-    
+
     // Validate required fields
     if (!firstName || !phonenumber || !homeaddress) {
         return res.status(400).json({
@@ -290,12 +296,12 @@ export function createUser(req, res) {
 
             // Hash the phone number to use as password
             const hashedPassword = bcrypt.hashSync(phonenumber.trim(), 10);
-            
+
             // Generate a unique userId in the format USRxxxx
             User.countDocuments({ type: "customer" }).then((count) => {
                 const userNumber = (count + 1).toString().padStart(4, '0');
                 const newUserId = `USR${userNumber}`;
-                
+
                 const newUser = new User({
                     userId: newUserId,
                     firstName: firstName.trim(),
@@ -306,11 +312,11 @@ export function createUser(req, res) {
                     homeaddress: homeaddress.trim(),
                     type: "customer"
                 });
-                
+
                 newUser.save()
                     .then((savedUser) => {
                         console.log("User created successfully:", savedUser.firstName);
-                        
+
                         // Generate JWT token
                         const token = jwt.sign({
                             userId: savedUser.userId,
@@ -320,8 +326,10 @@ export function createUser(req, res) {
                             phonenumber: savedUser.phonenumber,
                             homeaddress: savedUser.homeaddress,
                             email: savedUser.email
-                        }, process.env.SECRET);
-                        
+                        }, process.env.SECRET, {
+                            expiresIn: '24h'  // ADD THIS LINE
+                        });
+
                         res.status(201).json({
                             success: true,
                             message: "User registered successfully",
@@ -374,9 +382,9 @@ export function createUser(req, res) {
 // Check if account exists
 export function checkAccountExists(req, res) {
     console.log("checkAccountExists called with:", req.body);
-    
+
     const { firstName } = req.body;
-    
+
     if (!firstName) {
         return res.status(400).json({
             success: false,
@@ -411,9 +419,9 @@ export function checkAccountExists(req, res) {
 // Login function - uses firstName as username and phoneNumber as password
 export function loginUser(req, res) {
     console.log("loginUser called with:", req.body);
-    
+
     const { firstName, phonenumber } = req.body;
-    
+
     // Validate required fields
     if (!firstName || !phonenumber) {
         return res.status(400).json({
@@ -421,7 +429,7 @@ export function loginUser(req, res) {
             message: "First name and phone number are required"
         });
     }
-    
+
     // Find user by first name
     User.findOne({ firstName: firstName.trim() }).then(
         (user) => {
@@ -431,10 +439,10 @@ export function loginUser(req, res) {
                     message: "Account not found with this first name"
                 });
             }
-            
+
             // Check if phone number matches (compare with hashed password)
             const isPhoneCorrect = bcrypt.compareSync(phonenumber.trim(), user.password);
-            
+
             if (isPhoneCorrect) {
                 // Generate JWT token
                 const token = jwt.sign({
@@ -445,8 +453,10 @@ export function loginUser(req, res) {
                     phonenumber: user.phonenumber,
                     homeaddress: user.homeaddress,
                     email: user.email
-                }, process.env.SECRET);
-                
+                }, process.env.SECRET, {
+                    expiresIn: '24h'  // ADD THIS LINE
+                });
+
                 res.status(200).json({
                     success: true,
                     message: "Login successful",
@@ -552,7 +562,9 @@ export function updateCustomerProfile(req, res) {
                 phonenumber: updatedUser.phonenumber,
                 homeaddress: updatedUser.homeaddress,
                 email: updatedUser.email
-            }, process.env.SECRET);
+            }, process.env.SECRET, {
+                expiresIn: '24h'  // ADD THIS LINE
+            });
 
             console.log("Profile updated successfully for user:", updatedUser.userId);
 
@@ -584,9 +596,9 @@ export function updateCustomerProfile(req, res) {
 // Google registration function - creates user after Google auth
 export function googleRegister(req, res) {
     console.log("googleRegister called with:", req.body);
-    
+
     const { firstName, lastName, phonenumber, homeaddress, email, googleId, authProvider } = req.body;
-    
+
     // Validate required fields
     if (!firstName || !phonenumber || !homeaddress || !email || !googleId) {
         return res.status(400).json({
@@ -614,7 +626,7 @@ export function googleRegister(req, res) {
     }
 
     // Check if user already exists with this Google ID or email
-    User.findOne({ 
+    User.findOne({
         $or: [
             { email: email.trim() },
             { googleId: googleId }
@@ -623,10 +635,10 @@ export function googleRegister(req, res) {
         if (existingUser) {
             // User already exists - log them in instead
             console.log("User already exists with Google account");
-            
+
             // Check if phone number matches (for security)
             const isPhoneCorrect = bcrypt.compareSync(phonenumber.trim(), existingUser.password);
-            
+
             if (isPhoneCorrect || existingUser.googleId === googleId) {
                 // Generate JWT token
                 const token = jwt.sign({
@@ -637,8 +649,10 @@ export function googleRegister(req, res) {
                     phonenumber: existingUser.phonenumber,
                     homeaddress: existingUser.homeaddress,
                     email: existingUser.email
-                }, process.env.SECRET);
-                
+                }, process.env.SECRET, {
+                    expiresIn: '24h'  // ADD THIS LINE
+                });
+
                 return res.status(200).json({
                     success: true,
                     message: "User already exists. Logged in successfully.",
@@ -663,15 +677,15 @@ export function googleRegister(req, res) {
         } else {
             // Create new user with Google authentication
             console.log("Creating new user with Google authentication");
-            
+
             // Hash the phone number to use as password
             const hashedPassword = bcrypt.hashSync(phonenumber.trim(), 10);
-            
+
             // Generate a unique userId in the format USRxxxx
             User.countDocuments({ type: "customer" }).then((count) => {
                 const userNumber = (count + 1).toString().padStart(4, '0');
                 const newUserId = `USR${userNumber}`;
-                
+
                 const newUser = new User({
                     userId: newUserId,
                     firstName: firstName.trim(),
@@ -684,11 +698,11 @@ export function googleRegister(req, res) {
                     googleId: googleId,
                     authProvider: authProvider || 'google'
                 });
-                
+
                 newUser.save()
                     .then((savedUser) => {
                         console.log("User created successfully:", savedUser.firstName);
-                        
+
                         // Generate JWT token
                         const token = jwt.sign({
                             userId: savedUser.userId,
@@ -698,8 +712,10 @@ export function googleRegister(req, res) {
                             phonenumber: savedUser.phonenumber,
                             homeaddress: savedUser.homeaddress,
                             email: savedUser.email
-                        }, process.env.SECRET);
-                        
+                        }, process.env.SECRET, {
+                            expiresIn: '24h'  // ADD THIS LINE
+                        });
+
                         res.status(201).json({
                             success: true,
                             message: "User registered successfully with Google",
