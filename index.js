@@ -10,6 +10,7 @@ import orderRouter from './routes/orderRouter.js';
 import adminRouter from './routes/adminRouter.js';
 import contactRouter from './routes/contactRouter.js';
 import aboutRouter from './routes/aboutRouter.js';
+import reviewRouter from './routes/reviewRouter.js';
 import { 
     securityHeaders, 
     rateLimiter,
@@ -162,6 +163,7 @@ app.use("/api/orders", orderRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/contact", contactRouter);
 app.use("/api/about", aboutRouter);
+app.use("/api/reviews", reviewRouter);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
