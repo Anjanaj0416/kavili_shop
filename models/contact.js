@@ -27,6 +27,11 @@ const contactSchema = mongoose.Schema({
         required: true,
         default: "anjan@.com"
     },
+    mapLink: {
+        type: String,
+        required: false,
+        default: ""
+    },
     lastUpdated: {
         type: Date,
         default: Date.now
