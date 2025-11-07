@@ -22,11 +22,11 @@ const userSchema = mongoose.Schema({
     phonenumber: {
         type: String,
         required: true,
-        unique: true   // Phone number is the unique identifier
+        unique: true
     },
     password: {
         type: String,
-        required: true // This will store hashed phone number for customers
+        required: true
     },
     homeaddress: {
         type: String,
@@ -35,10 +35,10 @@ const userSchema = mongoose.Schema({
     email: {
         type: String,
         required: false,
-        sparse: true, 
+        sparse: true,
         default: null
     },
-    // 👇 new unified authentication fields
+    // 👇 unified authentication fields
     providerName: {
         type: String,
         enum: ["local", "google", "facebook"],
@@ -46,11 +46,14 @@ const userSchema = mongoose.Schema({
     },
     providerId: {
         type: String,
-        unique: true,
-        sparse: true, // multiple nulls allowed
+        sparse: true,
         default: null
     }
 });
+
+// Create sparse unique indexes manually
+userSchema.index({ email: 1 }, { unique: true, sparse: true });
+userSchema.index({ providerId: 1 }, { unique: true, sparse: true });
 
 const User = mongoose.model("user", userSchema);
 export default User;
