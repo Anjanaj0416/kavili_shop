@@ -36,20 +36,20 @@ const userSchema = mongoose.Schema({
         type: String,
         required: false,
         sparse: true, 
-
         default: null
     },
-    googleId: {
+    // 👇 new unified authentication fields
+    providerName: {
+        type: String,
+        enum: ["local", "google", "facebook"],
+        default: "local"
+    },
+    providerId: {
         type: String,
         unique: true,
-        sparse: true,
+        sparse: true, // multiple nulls allowed
         default: null
-    },
-    authProvider: {
-        type: String,
-        enum: ['local', 'google'],
-        default: 'local'
-    }   
+    }
 });
 
 const User = mongoose.model("user", userSchema);

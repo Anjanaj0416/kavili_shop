@@ -1,4 +1,4 @@
-// routes/userRouter.js - UPDATED VERSION WITH GOOGLE LOGIN
+// routes/userRouter.js - UPDATED VERSION WITH UNIFIED SOCIAL AUTH
 import express from "express";
 import { 
     checkAccountExists, 
@@ -6,8 +6,8 @@ import {
     loginOrRegister, 
     loginUser, 
     updateCustomerProfile, 
-    googleRegister,
-    googleLogin  // NEW: Import Google login function
+    socialRegister,  // New unified social registration
+    socialLogin      // New unified social login
 } from "../controllers/userController.js";
 import { getMyOrders, getOrderById } from "../controllers/orderController.js";
 import { authenticateToken } from "../middleware/auth.js";
@@ -24,8 +24,10 @@ userRouter.post("/", createUser);
 userRouter.post("/login", loginUser);
 userRouter.post("/login-or-register", loginOrRegister);
 userRouter.post("/check-account", checkAccountExists);
-userRouter.post("/google-register", googleRegister);
-userRouter.post("/google-login", googleLogin);  // NEW: Google login endpoint
+
+// Unified social authentication routes (Google & Facebook)
+userRouter.post("/social-register", socialRegister);  // Replaces google-register
+userRouter.post("/social-login", socialLogin);        // Replaces google-login
 userRouter.post('/check-user-by-phone', checkUserByPhone);
 
 // Profile management routes (protected - require authentication)

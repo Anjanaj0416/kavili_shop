@@ -91,164 +91,7 @@ export function googleLogin(req, res) {
     });
 }
 
-export function loginOrRegister(req, res) {
-    console.log("loginOrRegister called with:", req.body);
 
-    const { firstName, lastName, phonenumber, homeaddress, email } = req.body;
-
-    // Validate required fields
-    if (!firstName || !phonenumber) {
-        return res.status(400).json({
-            success: false,
-            message: "First name and phone number are required"
-        });
-    }
-
-    // Phone number validation
-    const phoneRegex = /^\d{10}$/;
-    if (!phoneRegex.test(phonenumber.trim())) {
-        return res.status(400).json({
-            success: false,
-            message: "Phone number must be 10 digits"
-        });
-    }
-
-    // Email validation (if provided)
-    if (email && email.trim()) {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email.trim())) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid email format"
-            });
-        }
-    }
-
-    // Check if user exists with this first name and phone number
-    User.findOne({ firstName: firstName.trim() }).then(
-        (user) => {
-            if (user) {
-                // User exists - verify phone number and log them in
-                const isPhoneCorrect = bcrypt.compareSync(phonenumber.trim(), user.password);
-
-                if (isPhoneCorrect) {
-                    // Generate JWT token
-                    const token = jwt.sign({
-                        userId: user.userId,
-                        firstName: user.firstName,
-                        lastName: user.lastName,
-                        type: user.type,
-                        phonenumber: user.phonenumber,
-                        homeaddress: user.homeaddress,
-                        email: user.email
-                    }, process.env.SECRET, {
-                        expiresIn: '24h'  // ADD THIS LINE
-                    });
-
-                    res.status(200).json({
-                        success: true,
-                        message: "Login successful",
-                        token: token,
-                        isNewUser: false,
-                        user: {
-                            userId: user.userId,
-                            firstName: user.firstName,
-                            lastName: user.lastName,
-                            type: user.type,
-                            phonenumber: user.phonenumber,
-                            homeaddress: user.homeaddress,
-                            email: user.email
-                        }
-                    });
-                } else {
-                    res.status(401).json({
-                        success: false,
-                        message: "Invalid phone number for this account"
-                    });
-                }
-            } else {
-                // User doesn't exist - create new user
-                console.log("Creating new user via loginOrRegister");
-
-                // Hash the phone number to use as password
-                const hashedPassword = bcrypt.hashSync(phonenumber.trim(), 10);
-
-                // Generate a unique userId in the format USRxxxx
-                User.countDocuments({ type: "customer" }).then((count) => {
-                    const userNumber = (count + 1).toString().padStart(4, '0');
-                    const newUserId = `USR${userNumber}`;
-
-                    const newUser = new User({
-                        userId: newUserId,
-                        firstName: firstName.trim(),
-                        lastName: lastName?.trim() || "",
-                        email: email?.trim() || null,
-                        phonenumber: phonenumber.trim(),
-                        password: hashedPassword,
-                        homeaddress: homeaddress?.trim() || "",
-                        type: "customer"
-                    });
-
-                    newUser.save()
-                        .then((savedUser) => {
-                            console.log("User created successfully:", savedUser.firstName);
-
-                            // Generate JWT token
-                            const token = jwt.sign({
-                                userId: savedUser.userId,
-                                firstName: savedUser.firstName,
-                                lastName: savedUser.lastName,
-                                type: savedUser.type,
-                                phonenumber: savedUser.phonenumber,
-                                homeaddress: savedUser.homeaddress,
-                                email: savedUser.email
-                            }, process.env.SECRET, {
-                                expiresIn: '24h'  // ADD THIS LINE
-                            });
-
-                            res.status(201).json({
-                                success: true,
-                                message: "User registered successfully",
-                                token: token,
-                                isNewUser: true,
-                                user: {
-                                    userId: savedUser.userId,
-                                    firstName: savedUser.firstName,
-                                    lastName: savedUser.lastName,
-                                    type: savedUser.type,
-                                    phonenumber: savedUser.phonenumber,
-                                    homeaddress: savedUser.homeaddress,
-                                    email: savedUser.email
-                                }
-                            });
-                        })
-                        .catch((error) => {
-                            console.error("Error creating user:", error);
-                            res.status(500).json({
-                                success: false,
-                                message: "Failed to create user",
-                                error: error.message
-                            });
-                        });
-                }).catch((error) => {
-                    console.error("Error counting users:", error);
-                    res.status(500).json({
-                        success: false,
-                        message: "Failed to generate user ID",
-                        error: error.message
-                    });
-                });
-            }
-        }
-    ).catch((error) => {
-        console.error("Error during login or register:", error);
-        res.status(500).json({
-            success: false,
-            message: "Login/Register failed",
-            error: error.message
-        });
-    });
-}
 
 export function createUser(req, res) {
     debugModules();
@@ -814,6 +657,440 @@ export function checkUserByPhone(req, res) {
     });
 }
 
+
+// ============================================
+// SOCIAL LOGIN (Google & Facebook)
+// ============================================
+
+// Social Login for existing users (Google or Facebook)
+export function socialLogin(req, res) {
+    console.log("socialLogin called with:", req.body);
+
+    const { email, providerId, providerName, displayName } = req.body;
+
+    // Validate required fields
+    if (!email || !providerId || !providerName) {
+        return res.status(400).json({
+            success: false,
+            message: "Email, provider ID, and provider name are required"
+        });
+    }
+
+    // Validate provider name
+    if (!['google', 'facebook'].includes(providerName)) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid provider name. Must be 'google' or 'facebook'"
+        });
+    }
+
+    // Find user by email
+    User.findOne({ email: email.trim() }).then(
+        (user) => {
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    message: "No account found with this email. Please register first or use traditional login."
+                });
+            }
+
+            // Check if user has an email (required for social login)
+            if (!user.email || user.email.trim() === '') {
+                return res.status(400).json({
+                    success: false,
+                    message: "This account doesn't have an email. Please use traditional login with name and phone number."
+                });
+            }
+
+            // If user exists with email, allow social login
+            // Update provider info if not already set
+            if (!user.providerId) {
+                user.providerId = providerId;
+                user.providerName = providerName;
+                user.save().catch(err => console.error("Error updating provider info:", err));
+            }
+
+            // Generate JWT token
+            const token = jwt.sign({
+                userId: user.userId,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                type: user.type,
+                phonenumber: user.phonenumber,
+                homeaddress: user.homeaddress,
+                email: user.email
+            }, process.env.SECRET, {
+                expiresIn: '24h'
+            });
+
+            res.status(200).json({
+                success: true,
+                message: `${providerName.charAt(0).toUpperCase() + providerName.slice(1)} login successful`,
+                token: token,
+                user: {
+                    userId: user.userId,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    type: user.type,
+                    phonenumber: user.phonenumber,
+                    homeaddress: user.homeaddress,
+                    email: user.email
+                }
+            });
+        }
+    ).catch((error) => {
+        console.error("Error during social login:", error);
+        res.status(500).json({
+            success: false,
+            message: "Social login failed",
+            error: error.message
+        });
+    });
+}
+
+// Social registration function - creates user after social auth (Google or Facebook)
+export function socialRegister(req, res) {
+    console.log("socialRegister called with:", req.body);
+
+    const { firstName, lastName, phonenumber, homeaddress, email, providerId, providerName } = req.body;
+
+    // Validate required fields
+    if (!firstName || !phonenumber || !homeaddress || !email || !providerId || !providerName) {
+        return res.status(400).json({
+            success: false,
+            message: "First name, phone number, home address, email, provider ID, and provider name are required"
+        });
+    }
+
+    // Validate provider name
+    if (!['google', 'facebook'].includes(providerName)) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid provider name. Must be 'google' or 'facebook'"
+        });
+    }
+
+    // Phone number validation
+    const phoneRegex = /^\d{10}$/;
+    if (!phoneRegex.test(phonenumber.trim())) {
+        return res.status(400).json({
+            success: false,
+            message: "Phone number must be 10 digits"
+        });
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+        return res.status(400).json({
+            success: false,
+            message: "Please enter a valid email address"
+        });
+    }
+
+    // Check if user with this email already exists
+    User.findOne({ email: email.trim() }).then((existingUser) => {
+        if (existingUser) {
+            // User with email already exists
+            if (existingUser.providerId === providerId) {
+                // Same provider ID - user already registered, just login
+                const token = jwt.sign({
+                    userId: existingUser.userId,
+                    firstName: existingUser.firstName,
+                    lastName: existingUser.lastName,
+                    type: existingUser.type,
+                    phonenumber: existingUser.phonenumber,
+                    homeaddress: existingUser.homeaddress,
+                    email: existingUser.email
+                }, process.env.SECRET, {
+                    expiresIn: '24h'
+                });
+
+                return res.status(200).json({
+                    success: true,
+                    message: "Logged in successfully.",
+                    token: token,
+                    isExistingUser: true,
+                    user: {
+                        userId: existingUser.userId,
+                        firstName: existingUser.firstName,
+                        lastName: existingUser.lastName,
+                        type: existingUser.type,
+                        phonenumber: existingUser.phonenumber,
+                        homeaddress: existingUser.homeaddress,
+                        email: existingUser.email
+                    }
+                });
+            } else {
+                return res.status(409).json({
+                    success: false,
+                    message: "An account with this email already exists with different credentials"
+                });
+            }
+        } else {
+            // Create new user with social authentication
+            console.log(`Creating new user with ${providerName} authentication`);
+
+            // Hash the phone number to use as password
+            const hashedPassword = bcrypt.hashSync(phonenumber.trim(), 10);
+
+            // Generate a unique userId in the format USRxxxx
+            User.countDocuments({ type: "customer" }).then((count) => {
+                const userNumber = (count + 1).toString().padStart(4, '0');
+                const newUserId = `USR${userNumber}`;
+
+                const newUser = new User({
+                    userId: newUserId,
+                    firstName: firstName.trim(),
+                    lastName: lastName?.trim() || "",
+                    email: email.trim(),
+                    phonenumber: phonenumber.trim(),
+                    password: hashedPassword,
+                    homeaddress: homeaddress.trim(),
+                    type: "customer",
+                    providerId: providerId,
+                    providerName: providerName
+                });
+
+                newUser.save()
+                    .then((savedUser) => {
+                        console.log("User created successfully:", savedUser.firstName);
+
+                        // Generate JWT token
+                        const token = jwt.sign({
+                            userId: savedUser.userId,
+                            firstName: savedUser.firstName,
+                            lastName: savedUser.lastName,
+                            type: savedUser.type,
+                            phonenumber: savedUser.phonenumber,
+                            homeaddress: savedUser.homeaddress,
+                            email: savedUser.email
+                        }, process.env.SECRET, {
+                            expiresIn: '24h'
+                        });
+
+                        res.status(201).json({
+                            success: true,
+                            message: `User registered successfully with ${providerName}`,
+                            token: token,
+                            isNewUser: true,
+                            user: {
+                                userId: savedUser.userId,
+                                firstName: savedUser.firstName,
+                                lastName: savedUser.lastName,
+                                type: savedUser.type,
+                                phonenumber: savedUser.phonenumber,
+                                homeaddress: savedUser.homeaddress,
+                                email: savedUser.email
+                            }
+                        });
+                    })
+                    .catch((error) => {
+                        console.error("Error creating user:", error);
+                        res.status(500).json({
+                            success: false,
+                            message: "Failed to create user",
+                            error: error.message
+                        });
+                    });
+            }).catch((error) => {
+                console.error("Error counting users:", error);
+                res.status(500).json({
+                    success: false,
+                    message: "Failed to generate user ID",
+                    error: error.message
+                });
+            });
+        }
+    }).catch((error) => {
+        console.error("Error checking existing user:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to check existing user",
+            error: error.message
+        });
+    });
+}
+
+// ============================================
+// TRADITIONAL LOGIN/REGISTER (Keep existing)
+// ============================================
+
+export function loginOrRegister(req, res) {
+    console.log("loginOrRegister called with:", req.body);
+
+    const { firstName, lastName, phonenumber, homeaddress, email } = req.body;
+
+    // Validate required fields
+    if (!firstName || !phonenumber) {
+        return res.status(400).json({
+            success: false,
+            message: "First name and phone number are required"
+        });
+    }
+
+    // Phone number validation
+    const phoneRegex = /^\d{10}$/;
+    if (!phoneRegex.test(phonenumber.trim())) {
+        return res.status(400).json({
+            success: false,
+            message: "Phone number must be 10 digits"
+        });
+    }
+
+    // Email validation (if provided)
+    if (email && email.trim()) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid email address"
+            });
+        }
+    }
+
+    // Check if user exists by phone number
+    User.findOne({ phonenumber: phonenumber.trim() })
+        .then((user) => {
+            if (user) {
+                // User exists - login
+                console.log("User found, logging in:", user.firstName);
+
+                const token = jwt.sign({
+                    userId: user.userId,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    type: user.type,
+                    phonenumber: user.phonenumber,
+                    homeaddress: user.homeaddress,
+                    email: user.email
+                }, process.env.SECRET, {
+                    expiresIn: '24h'
+                });
+
+                res.status(200).json({
+                    success: true,
+                    message: "Login successful",
+                    token: token,
+                    user: {
+                        userId: user.userId,
+                        firstName: user.firstName,
+                        lastName: user.lastName,
+                        type: user.type,
+                        phonenumber: user.phonenumber,
+                        homeaddress: user.homeaddress,
+                        email: user.email
+                    }
+                });
+            } else {
+                // User doesn't exist - check for email conflict before creating
+                const emailToCheck = email?.trim() || null;
+
+                if (emailToCheck) {
+                    User.findOne({ email: emailToCheck }).then((emailUser) => {
+                        if (emailUser) {
+                            return res.status(409).json({
+                                success: false,
+                                message: "An account with this email already exists. Please login instead."
+                            });
+                        }
+
+                        // No email conflict - create user
+                        createNewUser();
+                    }).catch((error) => {
+                        console.error("Error checking email:", error);
+                        res.status(500).json({
+                            success: false,
+                            message: "Failed to check email",
+                            error: error.message
+                        });
+                    });
+                } else {
+                    // No email provided - create user directly
+                    createNewUser();
+                }
+
+                function createNewUser() {
+                    console.log("User not found, registering new user");
+
+                    const hashedPassword = bcrypt.hashSync(phonenumber.trim(), 10);
+
+                    User.countDocuments({ type: "customer" }).then((count) => {
+                        const userNumber = (count + 1).toString().padStart(4, '0');
+                        const newUserId = `USR${userNumber}`;
+
+                        const newUser = new User({
+                            userId: newUserId,
+                            firstName: firstName.trim(),
+                            lastName: lastName?.trim() || "",
+                            email: email?.trim() || null,
+                            phonenumber: phonenumber.trim(),
+                            password: hashedPassword,
+                            homeaddress: homeaddress.trim(),
+                            type: "customer",
+                            providerName: "local",
+                            providerId: null
+                        });
+
+                        newUser.save()
+                            .then((savedUser) => {
+                                console.log("User created successfully:", savedUser.firstName);
+
+                                const token = jwt.sign({
+                                    userId: savedUser.userId,
+                                    firstName: savedUser.firstName,
+                                    lastName: savedUser.lastName,
+                                    type: savedUser.type,
+                                    phonenumber: savedUser.phonenumber,
+                                    homeaddress: savedUser.homeaddress,
+                                    email: savedUser.email
+                                }, process.env.SECRET, {
+                                    expiresIn: '24h'
+                                });
+
+                                res.status(201).json({
+                                    success: true,
+                                    message: "User registered successfully",
+                                    token: token,
+                                    user: {
+                                        userId: savedUser.userId,
+                                        firstName: savedUser.firstName,
+                                        lastName: savedUser.lastName,
+                                        type: savedUser.type,
+                                        phonenumber: savedUser.phonenumber,
+                                        homeaddress: savedUser.homeaddress,
+                                        email: savedUser.email
+                                    }
+                                });
+                            })
+                            .catch((error) => {
+                                console.error("Error creating user:", error);
+                                res.status(500).json({
+                                    success: false,
+                                    message: "Failed to create user",
+                                    error: error.message
+                                });
+                            });
+                    }).catch((error) => {
+                        console.error("Error counting users:", error);
+                        res.status(500).json({
+                            success: false,
+                            message: "Failed to generate user ID",
+                            error: error.message
+                        });
+                    });
+                }
+            }
+        })
+        .catch((error) => {
+            console.error("Error during login/register:", error);
+            res.status(500).json({
+                success: false,
+                message: "Failed to process request",
+                error: error.message
+            });
+        });
+}
 
 
 
