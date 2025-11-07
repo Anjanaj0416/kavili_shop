@@ -288,10 +288,13 @@ export function createUser(req, res) {
     User.findOne({ phonenumber: phonenumber.trim() }).then(
         (existingUser) => {
             if (existingUser) {
+                // This user REALLY exists in the database
+                console.log("Found existing user:", existingUser.userId, existingUser.firstName);
                 return res.status(409).json({
                     success: false,
                     message: "User already exists with this phone number. Please login instead."
                 });
+
             }
 
             // Hash the phone number to use as password
@@ -758,3 +761,59 @@ export function googleRegister(req, res) {
         });
     });
 }
+
+export function checkUserByPhone(req, res) {
+    console.log("checkUserByPhone called with:", req.body);
+
+    const { phonenumber } = req.body;
+
+    // Validate required field
+    if (!phonenumber) {
+        return res.status(400).json({
+            success: false,
+            message: "Phone number is required"
+        });
+    }
+
+    // Phone number validation
+    const phoneRegex = /^\d{10}$/;
+    if (!phoneRegex.test(phonenumber.trim())) {
+        return res.status(400).json({
+            success: false,
+            message: "Phone number must be 10 digits"
+        });
+    }
+
+    // Find user by phone number
+    User.findOne({ phonenumber: phonenumber.trim() }).then((user) => {
+        if (user) {
+            res.status(200).json({
+                success: true,
+                exists: true,
+                message: "User found",
+                user: {
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    userId: user.userId
+                }
+            });
+        } else {
+            res.status(200).json({
+                success: true,
+                exists: false,
+                message: "User not found"
+            });
+        }
+    }).catch((error) => {
+        console.error("Error checking user by phone:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error checking user",
+            error: error.message
+        });
+    });
+}
+
+
+
+

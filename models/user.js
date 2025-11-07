@@ -35,6 +35,8 @@ const userSchema = mongoose.Schema({
     email: {
         type: String,
         required: false,
+        sparse: true, 
+
         default: null
     },
     googleId: {
