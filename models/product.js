@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+
 const productSchema = mongoose.Schema({
     productId: {
         type: String,
@@ -12,18 +13,14 @@ const productSchema = mongoose.Schema({
     images: [{
         type: String
     }],
-    price: {
-        type: Number,
-        required: true
-    },
-    lastPrice: {
+    pricePerPiece: {
         type: Number,
         required: true
     },
     description: {
         type: String
     },
-    quantity: {
+    stock: {
         type: Number,
         required: true
     },
@@ -33,25 +30,25 @@ const productSchema = mongoose.Schema({
         enum: ['electronics', 'clothing', 'home', 'food', 'furniture'],
         default: 'electronics'
     },
+    availabilityStatus: {
+        type: String,
+        enum: ['available', 'not available'],
+        default: 'available'
+    },
     totalOrdered: {
         type: Number,
         default: 0
     },
-    packs: [{
-        packName: {
-            type: String,
-            required: true
-        },
-        packQuantity: {
+    bulkOffers: [{
+        pieces: {
             type: Number,
             required: true
         },
-        packPrice: {
+        offerPrice: {
             type: Number,
             required: true
         }
     }]
-
 })
 
 const Product = mongoose.model("products", productSchema);
