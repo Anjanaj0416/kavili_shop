@@ -9,9 +9,6 @@ const productSchema = mongoose.Schema({
         type: String,
         required: true
     },
-    altNames: [{
-        type: String
-    }],
     images: [{
         type: String
     }],
@@ -40,8 +37,19 @@ const productSchema = mongoose.Schema({
         type: Number,
         default: 0
     },
-    tags: [{
-        type: String
+    packs: [{
+        packName: {
+            type: String,
+            required: true
+        },
+        packQuantity: {
+            type: Number,
+            required: true
+        },
+        packPrice: {
+            type: Number,
+            required: true
+        }
     }]
 
 })
