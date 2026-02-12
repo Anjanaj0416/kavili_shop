@@ -14,7 +14,7 @@ export function createProduct(req, res) {
         newProductData.productId = 'P' + Date.now() + Math.random().toString(36).substr(2, 5);
     }
     if (newProductData.category) {
-        const validCategories = ['electronics', 'clothing', 'home', 'food', 'furniture'];
+        const validCategories = ['sweets', 'savory', 'beverages', 'spices', 'curries'];
         if (!validCategories.includes(newProductData.category.toLowerCase())) {
             return res.status(400).json({
                 message: "Invalid category. Valid categories are: " + validCategories.join(', ')
@@ -46,7 +46,7 @@ export async function getProductsByCategory(req, res) {
         const category = req.params.category;
 
         // Validate category against enum values
-        const validCategories = ['electronics', 'clothing', 'home', 'food', 'furniture'];
+        const validCategories = ['sweets', 'savory', 'beverages', 'spices', 'curries'];
         if (!validCategories.includes(category.toLowerCase())) {
             return res.status(400).json({
                 message: "Invalid category. Valid categories are: " + validCategories.join(', ')
@@ -173,7 +173,7 @@ export async function getProductByIdInCategory(req, res) {
         const { category, productId } = req.params;
         
         // Validate category against enum values
-        const validCategories = ['electronics', 'clothing', 'home', 'food', 'furniture'];
+        const validCategories = ['sweets', 'savory', 'beverages', 'spices', 'curries'];
         if (!validCategories.includes(category.toLowerCase())) {
             return res.status(400).json({
                 message: "Invalid category. Valid categories are: " + validCategories.join(', ')

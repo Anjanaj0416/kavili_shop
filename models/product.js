@@ -27,8 +27,8 @@ const productSchema = mongoose.Schema({
     category: {
         type: String,
         required: true,
-        enum: ['electronics', 'clothing', 'home', 'food', 'furniture'],
-        default: 'electronics'
+        enum: ['sweets', 'savory', 'beverages', 'spices', 'curries'],
+        default: 'sweets'
     },
     availabilityStatus: {
         type: String,
